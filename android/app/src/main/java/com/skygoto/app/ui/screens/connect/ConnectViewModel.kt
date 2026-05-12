@@ -131,7 +131,15 @@ class ConnectViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.update { it.copy(isConnecting = true, error = null) }
             
-            val result = bluetoothManager?.connect(getBluetoothDevice(deviceAddress))
+            val device = getBluetoothDevice(deviceAddress)
+            if (device == null) {
+                _uiState.update { it.copy(isConnecting = false, error = "未找到蓝牙设备") }
+                return@launch
+            }
+            
+            val result = bluetoothManager?.connect(device)
+            
+            result?.fold(
             
             result?.fold(
                 onSuccess = { connection ->

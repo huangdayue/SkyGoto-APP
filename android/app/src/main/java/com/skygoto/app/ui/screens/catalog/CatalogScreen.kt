@@ -1,3 +1,5 @@
+@file:OptIn(ExperimentalMaterial3Api::class)
+
 package com.skygoto.app.ui.screens.catalog
 
 import androidx.compose.foundation.background

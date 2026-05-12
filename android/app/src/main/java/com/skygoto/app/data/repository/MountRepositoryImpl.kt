@@ -20,7 +20,7 @@ class MountRepositoryImpl @Inject constructor() : MountRepository {
     override val mountStatus: StateFlow<MountStatus> = _mountStatus
     
     private val _isConnected = MutableStateFlow(false)
-    override val isConnected: StateFlow<Boolean> = _isConnected.asStateFlow()
+    override val isConnected: StateFlow<Boolean> = _isConnected
     
     private var pollingJob: Job? = null
     
@@ -182,6 +182,7 @@ class MountRepositoryImpl @Inject constructor() : MountRepository {
         }
     }
     
+    @OptIn(ExperimentalStdlibApi::class)
     override fun onCleared() {
         super.onCleared()
         scope.cancel()
