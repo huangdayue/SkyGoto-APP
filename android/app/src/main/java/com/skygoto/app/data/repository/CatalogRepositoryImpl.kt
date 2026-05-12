@@ -18,11 +18,11 @@ class CatalogRepositoryImpl @Inject constructor(
     
     private val gson = Gson()
     
-    private val messierCatalog: List<CelestialObject> by lazy {
+    private val _messier: List<CelestialObject> by lazy {
         loadCatalog("MessierCatalog.json")
     }
     
-    private val ngcCatalog: List<CelestialObject> by lazy {
+    private val _ngc: List<CelestialObject> by lazy {
         loadCatalog("NGCCatalog.json")
     }
     
@@ -37,18 +37,18 @@ class CatalogRepositoryImpl @Inject constructor(
         }
     }
     
-    override fun getMessierCatalog(): List<CelestialObject> = messierCatalog
+    override fun getMessierCatalog(): List<CelestialObject> = _messier
     
-    override fun getNGCCatalog(): List<CelestialObject> = ngcCatalog
+    override fun getNGCCatalog(): List<CelestialObject> = _ngc
     
     override fun search(query: String, catalog: CatalogType?): List<CelestialObject> {
         val q = query.lowercase().trim()
         if (q.isEmpty()) return emptyList()
         
         val source = when (catalog) {
-            CatalogType.MESSIER -> messierCatalog
-            CatalogType.NGC -> ngcCatalog
-            else -> messierCatalog + ngcCatalog
+            CatalogType.MESSIER -> _messier
+            CatalogType.NGC -> _ngc
+            else -> _messier + _ngc
         }
         
         return source.filter { obj ->
@@ -61,18 +61,18 @@ class CatalogRepositoryImpl @Inject constructor(
     
     override fun filterByType(type: ObjectType, catalog: CatalogType?): List<CelestialObject> {
         val source = when (catalog) {
-            CatalogType.MESSIER -> messierCatalog
-            CatalogType.NGC -> ngcCatalog
-            else -> messierCatalog + ngcCatalog
+            CatalogType.MESSIER -> _messier
+            CatalogType.NGC -> _ngc
+            else -> _messier + _ngc
         }
         return source.filter { it.type == type }
     }
     
     override fun filterByConstellation(constellation: String, catalog: CatalogType?): List<CelestialObject> {
         val source = when (catalog) {
-            CatalogType.MESSIER -> messierCatalog
-            CatalogType.NGC -> ngcCatalog
-            else -> messierCatalog + ngcCatalog
+            CatalogType.MESSIER -> _messier
+            CatalogType.NGC -> _ngc
+            else -> _messier + _ngc
         }
         return source.filter { it.constellation.contains(constellation, ignoreCase = true) }
     }
