@@ -140,8 +140,6 @@ class ConnectViewModel @Inject constructor(
             val result = bluetoothManager?.connect(device)
             
             result?.fold(
-            
-            result?.fold(
                 onSuccess = { connection ->
                     mountRepository.setConnection(connection)
                     _uiState.update { 
