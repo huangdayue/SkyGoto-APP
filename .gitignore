@@ -1,0 +1,25 @@
+# Gradle
+.gradle/
+build/
+*.class
+
+# Android Studio
+*.iml
+.local
+captures/
+
+# Build outputs
+*.apk
+*.aab
+*.ap_
+*.dex
+
+# Debug
+*.log
+
+# Local config (contains API keys etc)
+local.properties
+
+# OS
+.DS_Store
+Thumbs.db
