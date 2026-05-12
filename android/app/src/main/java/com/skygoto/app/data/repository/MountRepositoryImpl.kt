@@ -181,10 +181,4 @@ class MountRepositoryImpl @Inject constructor() : MountRepository {
             }
         }
     }
-    
-    @OptIn(ExperimentalStdlibApi::class)
-    override fun onCleared() {
-        super.onCleared()
-        scope.cancel()
-    }
 }
