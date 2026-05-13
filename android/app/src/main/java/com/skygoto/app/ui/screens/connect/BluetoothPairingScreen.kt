@@ -23,6 +23,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.skygoto.app.data.datasource.ScannedBluetoothDevice
@@ -145,20 +146,26 @@ fun BluetoothPairingScreen(
                 if (isScanning) {
                     OutlinedButton(
                         onClick = onStopScanClick,
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Error)
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Error),
+                        modifier = Modifier.animateColorAsState()
                     ) {
                         Icon(Icons.Default.Stop, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("停止扫描")
+                        Text("停止扫描", fontWeight = FontWeight.Bold)
                     }
                 } else {
                     Button(
                         onClick = onScanClick,
-                        colors = ButtonDefaults.buttonColors(containerColor = Accent)
+                        colors = ButtonDefaults.buttonColors(containerColor = Accent),
+                        modifier = Modifier.animateColorAsState(),
+                        elevation = ButtonDefaults.buttonElevation(
+                            defaultElevation = 4.dp,
+                            pressedElevation = 8.dp
+                        )
                     ) {
                         Icon(Icons.Default.Radar, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("扫描")
+                        Text("扫描", fontWeight = FontWeight.Bold)
                     }
                 }
             }

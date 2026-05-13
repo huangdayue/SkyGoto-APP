@@ -54,4 +54,10 @@ object LX200Commands {
     
     // 扩展命令
     const val EXTENDED = "GX"        // OnStepX 扩展
+    
+    // 位置设置 (OnStepX)
+    const val SET_LATITUDE = "St"    // 设置纬度 :St+34°05'34#
+    const val SET_LONGITUDE = "Sg"   // 设置经度 :Sg117°30'00#
+    const val GET_LATITUDE = "Gt"    // 获取纬度
+    const val GET_LONGITUDE = "Gg"   // 获取经度
 }

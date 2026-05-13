@@ -182,6 +182,57 @@ class MountRepositoryImpl @Inject constructor() : MountRepository {
         return p.sendCommand(Cmd.SET_ZERO).map { }
     }
     
+    override suspend fun setLocation(longitude: String, latitude: String): Result<Unit> {
+        val p = protocol ?: return Result.failure(Exception("Not connected"))
+        
+        // 将 DMS 格式转换为 OnStepX 格式
+        val latOnStep = dmsToOnStepFormat(latitude, isLatitude = true)
+        val lonOnStep = dmsToOnStepFormat(longitude, isLatitude = false)
+        
+        // 发送位置到赤道仪
+        val latResult = p.sendCommand("${Cmd.SET_LATITUDE}$latOnStep")
+        val lonResult = p.sendCommand("${Cmd.SET_LONGITUDE}$lonOnStep")
+        
+        return if (latResult.isSuccess && lonResult.isSuccess) {
+            Result.success(Unit)
+        } else {
+            Result.failure(Exception("设置位置失败"))
+        }
+    }
+    
+    /**
+     * 将 DMS 格式转换为 OnStepX 格式
+     * OnStepX 格式: :St+34°05'34# (纬度) 或 :Sg117°30'00# (经度)
+     */
+    private fun dmsToOnStepFormat(dms: String, isLatitude: Boolean): String {
+        // 解析 DMS 格式
+        val cleaned = dms.trim()
+            .replace("°", ":")
+            .replace("'", ":")
+            .replace("\"", "")
+        
+        // 移除最后的 N/S/E/W 标识
+        val withoutDir = cleaned.replace(Regex("[NSEW]$"), "")
+        
+        val parts = withoutDir.split(":").filter { it.isNotBlank() }
+        if (parts.isEmpty()) return "+00:00:00"
+        
+        // 解析数值
+        val sign = when {
+            withoutDir.startsWith("-") -> "-"
+            withoutDir.startsWith("S") || withoutDir.startsWith("W") -> "-"
+            isLatitude && withoutDir.contains("S") -> "-"
+            !isLatitude && withoutDir.contains("W") -> "-"
+            else -> "+"
+        }
+        
+        val deg = parts.getOrNull(0)?.replace(Regex("[^0-9]"), "") ?: "00"
+        val min = parts.getOrNull(1)?.replace(Regex("[^0-9]"), "") ?: "00"
+        val sec = parts.getOrNull(2)?.replace(Regex("[^0-9]"), "") ?: "00"
+        
+        return "$sign${deg.padStart(2, '0')}:${min.padStart(2, '0')}:${sec.padStart(2, '0')}"
+    }
+    
     private fun startPolling() {
         pollingJob?.cancel()
         pollingJob = scope.launch {

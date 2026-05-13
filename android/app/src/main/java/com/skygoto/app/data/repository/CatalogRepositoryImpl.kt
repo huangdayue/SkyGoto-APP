@@ -92,7 +92,7 @@ private data class CatalogObject(
     val name: String,
     @com.google.gson.annotations.SerializedName("name_en")
     val nameEn: String = "",
-    val altNames: List<String> = emptyList(),
+    val altNames: List<String>? = null,
     val type: String,
     @com.google.gson.annotations.SerializedName("type_cn")
     val typeCn: String = "",
@@ -110,7 +110,7 @@ private data class CatalogObject(
         id = id,
         name = name,
         nameEn = nameEn,
-        altNames = if (altNames.isEmpty()) listOf(nameEn) else altNames,
+        altNames = if (altNames.isNullOrEmpty()) listOf(nameEn) else altNames,
         type = ObjectType.fromCode(type),
         ra = ra,
         dec = dec,

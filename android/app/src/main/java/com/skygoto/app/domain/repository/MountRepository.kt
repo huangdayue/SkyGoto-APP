@@ -32,4 +32,7 @@ interface MountRepository {
     // 回零位和设零位
     suspend fun home(): Result<Unit>
     suspend fun setZeroPosition(): Result<Unit>
+    
+    // 位置同步
+    suspend fun setLocation(longitude: String, latitude: String): Result<Unit>
 }

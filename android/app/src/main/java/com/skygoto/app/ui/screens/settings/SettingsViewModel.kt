@@ -41,7 +41,10 @@ data class SettingsUiState(
     val isSyncingTime: Boolean = false,
     
     // 权限状态
-    val hasLocationPermission: Boolean = false
+    val hasLocationPermission: Boolean = false,
+    
+    // 赤道仪连接状态
+    val isMountConnected: Boolean = false
 )
 
 @HiltViewModel
@@ -112,6 +115,13 @@ class SettingsViewModel @Inject constructor(
             launch {
                 settingsDataStore.autoTimezone.collect { value ->
                     _uiState.update { it.copy(autoTimezone = value) }
+                }
+            }
+            
+            // 观察赤道仪连接状态
+            launch {
+                mountRepository.isConnected.collect { connected ->
+                    _uiState.update { it.copy(isMountConnected = connected) }
                 }
             }
         }
@@ -199,6 +209,11 @@ class SettingsViewModel @Inject constructor(
                 viewModelScope.launch {
                     settingsDataStore.setLatitude(latDMS)
                     settingsDataStore.setLongitude(lonDMS)
+                }
+                
+                // 如果赤道仪已连接，同步位置到赤道仪
+                if (_uiState.value.isMountConnected) {
+                    syncLocationToMount()
                 }
             } else {
                 _uiState.update { 
@@ -301,6 +316,34 @@ class SettingsViewModel @Inject constructor(
         }
     }
     
+    /**
+     * 同步位置到赤道仪
+     */
+    private fun syncLocationToMount() {
+        viewModelScope.launch {
+            val lon = _uiState.value.longitude
+            val lat = _uiState.value.latitude
+            
+            try {
+                val result = mountRepository.setLocation(lon, lat)
+                result.fold(
+                    onSuccess = {
+                        // 位置同步成功
+                    },
+                    onFailure = { e ->
+                        _uiState.update { 
+                            it.copy(locationError = "同步位置到赤道仪失败: ${e.message}") 
+                        }
+                    }
+                )
+            } catch (e: Exception) {
+                _uiState.update { 
+                    it.copy(locationError = "同步位置到赤道仪失败: ${e.message}") 
+                }
+            }
+        }
+    }
+    
     private fun getMountTimeFromDevice(): String {
         // 实际项目中通过 protocol 发送 :GT# 获取赤道仪时间
         // 这里返回当前时间作为示例
@@ -386,22 +429,36 @@ class SettingsViewModel @Inject constructor(
     }
     
     // 工具函数：解析 DMS 格式为十进制
+    // 支持格式: "120:30:00", "120°30'00\"", "+30°00'00\"N", "-02°30'00\"S"
     private fun parseDMSToDecimal(dms: String): Double {
-        // 支持格式: "120:30:00" 或 "120°30'00\""
-        val cleaned = dms.replace("°", ":").replace("'", ":").replace("\"", "")
-        val parts = cleaned.split(":")
+        if (dms.isBlank()) return 0.0
         
-        if (parts.size < 2) return 0.0
-        
-        var sign = 1.0
-        val firstPart = parts[0]
-        if (firstPart.startsWith("-") || firstPart.startsWith("S") || firstPart.startsWith("W")) {
-            sign = -1.0
+        var cleaned = dms.trim()
+        // 移除最后的方向指示符 (N, S, E, W)
+        val lastChar = cleaned.last().uppercaseChar()
+        if (lastChar in listOf('N', 'S', 'E', 'W', 'D')) {
+            cleaned = cleaned.dropLast(1)
         }
         
-        val deg = parts[0].replace(Regex("[A-Z]"), "").replace("-", "").toDoubleOrNull() ?: 0.0
-        val min = parts.getOrNull(1)?.toDoubleOrNull() ?: 0.0
-        val sec = parts.getOrNull(2)?.toDoubleOrNull() ?: 0.0
+        // 替换度分秒符号为冒号
+        cleaned = cleaned.replace("°", ":").replace("'", ":").replace("\"", ":")
+        
+        val parts = cleaned.split(":").filter { it.isNotBlank() }
+        if (parts.isEmpty()) return 0.0
+        
+        // 解析符号
+        var sign = 1.0
+        val firstPart = parts[0].trim()
+        when {
+            firstPart.startsWith("-") -> sign = -1.0
+            firstPart.startsWith("S") || firstPart.startsWith("W") -> sign = -1.0
+        }
+        
+        // 移除符号和字母，只保留数字
+        val degStr = parts[0].replace(Regex("[^0-9.]"), "")
+        val deg = degStr.toDoubleOrNull() ?: 0.0
+        val min = parts.getOrNull(1)?.replace(Regex("[^0-9.]"), "")?.toDoubleOrNull() ?: 0.0
+        val sec = parts.getOrNull(2)?.replace(Regex("[^0-9.]"), "")?.toDoubleOrNull() ?: 0.0
         
         return sign * (deg + min / 60.0 + sec / 3600.0)
     }
