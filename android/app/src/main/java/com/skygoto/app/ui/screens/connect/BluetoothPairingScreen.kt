@@ -146,8 +146,7 @@ fun BluetoothPairingScreen(
                 if (isScanning) {
                     OutlinedButton(
                         onClick = onStopScanClick,
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Error),
-                        modifier = Modifier.animateColorAsState()
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Error)
                     ) {
                         Icon(Icons.Default.Stop, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(4.dp))
@@ -157,7 +156,6 @@ fun BluetoothPairingScreen(
                     Button(
                         onClick = onScanClick,
                         colors = ButtonDefaults.buttonColors(containerColor = Accent),
-                        modifier = Modifier.animateColorAsState(),
                         elevation = ButtonDefaults.buttonElevation(
                             defaultElevation = 4.dp,
                             pressedElevation = 8.dp
