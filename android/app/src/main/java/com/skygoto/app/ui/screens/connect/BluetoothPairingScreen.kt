@@ -28,6 +28,7 @@ import androidx.core.content.ContextCompat
 import com.skygoto.app.data.datasource.ScannedBluetoothDevice
 import com.skygoto.app.ui.theme.*
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BluetoothPairingScreen(
     isScanning: Boolean,
