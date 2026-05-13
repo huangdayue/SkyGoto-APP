@@ -28,4 +28,8 @@ interface MountRepository {
     
     // 同步
     suspend fun syncToCurrentPosition(): Result<Unit>
+    
+    // 回零位和设零位
+    suspend fun home(): Result<Unit>
+    suspend fun setZeroPosition(): Result<Unit>
 }

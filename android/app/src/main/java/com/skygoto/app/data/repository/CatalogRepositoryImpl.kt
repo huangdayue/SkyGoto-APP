@@ -90,28 +90,32 @@ private data class CatalogData(
 private data class CatalogObject(
     val id: String,
     val name: String,
+    @com.google.gson.annotations.SerializedName("name_en")
     val nameEn: String = "",
     val altNames: List<String> = emptyList(),
     val type: String,
-    val type_cn: String,
+    @com.google.gson.annotations.SerializedName("type_cn")
+    val typeCn: String = "",
     val ra: String,
     val dec: String,
     val constellation: String,
     val magnitude: Double,
-    val ra_deg: Double,
-    val dec_deg: Double,
+    @com.google.gson.annotations.SerializedName("ra_deg")
+    val raDeg: Double = 0.0,
+    @com.google.gson.annotations.SerializedName("dec_deg")
+    val decDeg: Double = 0.0,
     val description: String = ""
 ) {
     fun toCelestialObject(): CelestialObject = CelestialObject(
         id = id,
         name = name,
         nameEn = nameEn,
-        altNames = altNames,
+        altNames = if (altNames.isEmpty()) listOf(nameEn) else altNames,
         type = ObjectType.fromCode(type),
         ra = ra,
         dec = dec,
-        raDeg = ra_deg,
-        decDeg = dec_deg,
+        raDeg = raDeg,
+        decDeg = decDeg,
         constellation = constellation,
         magnitude = magnitude,
         description = description

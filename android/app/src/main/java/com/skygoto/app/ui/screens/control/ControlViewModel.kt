@@ -99,4 +99,32 @@ class ControlViewModel @Inject constructor(
     fun clearGotoResult() {
         _uiState.update { it.copy(gotoResult = null) }
     }
+    
+    fun home() {
+        viewModelScope.launch {
+            val result = mountRepository.home()
+            result.fold(
+                onSuccess = {
+                    _uiState.update { it.copy(gotoResult = "回零位完成") }
+                },
+                onFailure = { e ->
+                    _uiState.update { it.copy(gotoResult = "回零位失败: ${e.message}") }
+                }
+            )
+        }
+    }
+    
+    fun setZeroPosition() {
+        viewModelScope.launch {
+            val result = mountRepository.setZeroPosition()
+            result.fold(
+                onSuccess = {
+                    _uiState.update { it.copy(gotoResult = "已设为零位") }
+                },
+                onFailure = { e ->
+                    _uiState.update { it.copy(gotoResult = "设零位失败: ${e.message}") }
+                }
+            )
+        }
+    }
 }

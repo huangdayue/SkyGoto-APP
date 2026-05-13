@@ -45,6 +45,10 @@ object LX200Commands {
     // 同步
     const val SYNC = "CM"             // 同步到目标
     
+    // 回零位和设零位
+    const val HOME = "hZ"             // 回零位 (Home)
+    const val SET_ZERO = "SZP"        // 设置当前位置为零位
+    
     // 系统
     const val VERSION = "V"           // 获取版本
     

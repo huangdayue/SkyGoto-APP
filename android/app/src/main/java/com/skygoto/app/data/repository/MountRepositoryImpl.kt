@@ -172,6 +172,16 @@ class MountRepositoryImpl @Inject constructor() : MountRepository {
         return p.sendCommand(Cmd.SYNC).map { }
     }
     
+    override suspend fun home(): Result<Unit> {
+        val p = protocol ?: return Result.failure(Exception("Not connected"))
+        return p.sendCommand(Cmd.HOME).map { }
+    }
+    
+    override suspend fun setZeroPosition(): Result<Unit> {
+        val p = protocol ?: return Result.failure(Exception("Not connected"))
+        return p.sendCommand(Cmd.SET_ZERO).map { }
+    }
+    
     private fun startPolling() {
         pollingJob?.cancel()
         pollingJob = scope.launch {

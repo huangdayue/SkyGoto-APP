@@ -6,6 +6,7 @@ import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.skygoto.app.data.datasource.BluetoothConnectionManager
+import com.skygoto.app.data.datasource.ScannedBluetoothDevice
 import com.skygoto.app.data.protocol.LX200Protocol
 import com.skygoto.app.data.protocol.ProtocolConnection
 import com.skygoto.app.data.repository.MountRepositoryImpl
@@ -24,7 +25,9 @@ data class ConnectUiState(
     val error: String? = null,
     val pairedDevices: List<Pair<String, String>> = emptyList(), // name, address
     val isWifiConnection: Boolean = true,
-    val deviceName: String = ""
+    val deviceName: String = "",
+    val isScanning: Boolean = false,
+    val scannedDevices: List<ScannedBluetoothDevice> = emptyList()
 )
 
 @HiltViewModel
@@ -76,6 +79,19 @@ class ConnectViewModel @Inject constructor(
     private fun initBluetooth() {
         bluetoothManager = BluetoothConnectionManager(context)
         refreshBluetoothDevices()
+        
+        // 观察扫描状态和设备列表
+        viewModelScope.launch {
+            bluetoothManager?.isScanning?.collect { scanning ->
+                _uiState.update { it.copy(isScanning = scanning) }
+            }
+        }
+        
+        viewModelScope.launch {
+            bluetoothManager?.scannedDevices?.collect { devices ->
+                _uiState.update { it.copy(scannedDevices = devices) }
+            }
+        }
     }
     
     fun selectConnectionType(type: ConnectionTabType) {
@@ -96,6 +112,65 @@ class ConnectViewModel @Inject constructor(
             (device.name ?: "Unknown") to device.address
         } ?: emptyList()
         _uiState.update { it.copy(pairedDevices = devices) }
+    }
+    
+    /**
+     * 开始蓝牙扫描
+     */
+    fun startBluetoothScan() {
+        bluetoothManager?.startScan()
+    }
+    
+    /**
+     * 停止蓝牙扫描
+     */
+    fun stopBluetoothScan() {
+        bluetoothManager?.stopScan()
+    }
+    
+    /**
+     * 连接到扫描到的蓝牙设备
+     */
+    fun connectToScannedDevice(device: ScannedBluetoothDevice) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isConnecting = true, error = null) }
+            
+            val result = bluetoothManager?.connectByAddress(device.address)
+            
+            result?.fold(
+                onSuccess = { connection ->
+                    // 验证连接：发送 :GVP# 获取版本信息
+                    val protocol = LX200Protocol(connection)
+                    val versionResult = protocol.sendCommand(":GVP#")
+                    
+                    versionResult.fold(
+                        onSuccess = { version ->
+                            mountRepository.setConnection(connection)
+                            _uiState.update { 
+                                it.copy(
+                                    isConnecting = false,
+                                    deviceName = "${device.name} ($version)",
+                                    isWifiConnection = false
+                                ) 
+                            }
+                        },
+                        onFailure = { e ->
+                            connection.close()
+                            _uiState.update { 
+                                it.copy(isConnecting = false, error = "连接验证失败: ${e.message}") 
+                            }
+                        }
+                    )
+                },
+                onFailure = { e ->
+                    _uiState.update { 
+                        it.copy(isConnecting = false, error = e.message ?: "蓝牙连接失败") 
+                    }
+                }
+            ) ?: _uiState.update { 
+                it.copy(isConnecting = false, error = "蓝牙连接不可用") 
+            }
+        }
     }
     
     fun connectWifi() {

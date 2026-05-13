@@ -70,7 +70,16 @@ fun ControlScreen(
         // D-Pad 方向控制
         DPadControl(
             onDirectionPressed = viewModel::move,
-            onDirectionReleased = viewModel::stopMove
+            onDirectionReleased = viewModel::stopMove,
+            onStopPressed = viewModel::stopMove
+        )
+        
+        Spacer(modifier = Modifier.height(16.dp))
+        
+        // 零位控制
+        ZeroPositionControls(
+            onHome = viewModel::home,
+            onSetZero = viewModel::setZeroPosition
         )
         
         Spacer(modifier = Modifier.height(16.dp))
@@ -203,7 +212,8 @@ private fun RateSelector(
 @Composable
 private fun DPadControl(
     onDirectionPressed: (Direction) -> Unit,
-    onDirectionReleased: () -> Unit
+    onDirectionReleased: () -> Unit,
+    onStopPressed: () -> Unit
 ) {
     Box(
         modifier = Modifier
@@ -211,12 +221,10 @@ private fun DPadControl(
             .aspectRatio(1f),
         contentAlignment = Alignment.Center
     ) {
-        // 中心点
-        Box(
-            modifier = Modifier
-                .size(60.dp)
-                .clip(CircleShape)
-                .background(Secondary)
+        // 中心停止按钮
+        StopButton(
+            modifier = Modifier.align(Alignment.Center),
+            onPressed = onStopPressed
         )
         
         // 北
@@ -224,7 +232,7 @@ private fun DPadControl(
             direction = Direction.NORTH,
             modifier = Modifier
                 .align(Alignment.TopCenter)
-                .offset(y = 20.dp),
+                .offset(y = 40.dp),
             onPressed = { onDirectionPressed(Direction.NORTH) },
             onReleased = onDirectionReleased
         )
@@ -234,7 +242,7 @@ private fun DPadControl(
             direction = Direction.SOUTH,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .offset(y = (-20).dp),
+                .offset(y = (-40).dp),
             onPressed = { onDirectionPressed(Direction.SOUTH) },
             onReleased = onDirectionReleased
         )
@@ -244,7 +252,7 @@ private fun DPadControl(
             direction = Direction.WEST,
             modifier = Modifier
                 .align(Alignment.CenterStart)
-                .offset(x = 20.dp),
+                .offset(x = 40.dp),
             onPressed = { onDirectionPressed(Direction.WEST) },
             onReleased = onDirectionReleased
         )
@@ -254,10 +262,54 @@ private fun DPadControl(
             direction = Direction.EAST,
             modifier = Modifier
                 .align(Alignment.CenterEnd)
-                .offset(x = (-20).dp),
+                .offset(x = (-40).dp),
             onPressed = { onDirectionPressed(Direction.EAST) },
             onReleased = onDirectionReleased
         )
+    }
+}
+
+@Composable
+private fun StopButton(
+    modifier: Modifier = Modifier,
+    onPressed: () -> Unit
+) {
+    var isPressed by remember { mutableStateOf(false) }
+    
+    Box(
+        modifier = modifier
+            .size(72.dp)
+            .clip(CircleShape)
+            .background(
+                if (isPressed) Error.copy(alpha = 0.7f)
+                else Error
+            )
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onPress = {
+                        isPressed = true
+                        onPressed()
+                        tryAwaitRelease()
+                        isPressed = false
+                    }
+                )
+            },
+        contentAlignment = Alignment.Center
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Icon(
+                Icons.Default.Stop,
+                contentDescription = "STOP",
+                tint = Primary,
+                modifier = Modifier.size(if (isPressed) 32.dp else 28.dp)
+            )
+            Text(
+                "STOP",
+                fontSize = if (isPressed) 12.sp else 10.sp,
+                color = Primary,
+                fontWeight = FontWeight.Bold
+            )
+        }
     }
 }
 
@@ -281,16 +333,23 @@ private fun DirectionButton(
         Direction.WEST -> "W"
     }
     
+    var isPressed by remember { mutableStateOf(false) }
+    
     Box(
         modifier = modifier
             .size(56.dp)
             .clip(CircleShape)
-            .background(Accent.copy(alpha = 0.8f))
+            .background(
+                if (isPressed) Accent 
+                else Accent.copy(alpha = 0.8f)
+            )
             .pointerInput(Unit) {
                 detectTapGestures(
                     onPress = {
+                        isPressed = true
                         onPressed()
                         tryAwaitRelease()
+                        isPressed = false
                         onReleased()
                     }
                 )
@@ -298,8 +357,18 @@ private fun DirectionButton(
         contentAlignment = Alignment.Center
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Icon(icon, contentDescription = direction.name, tint = Primary)
-            Text(label, fontSize = 10.sp, color = Primary, fontWeight = FontWeight.Bold)
+            Icon(
+                icon, 
+                contentDescription = direction.name, 
+                tint = Primary,
+                modifier = Modifier.size(if (isPressed) 28.dp else 24.dp)
+            )
+            Text(
+                label, 
+                fontSize = if (isPressed) 11.sp else 10.sp, 
+                color = Primary, 
+                fontWeight = FontWeight.Bold
+            )
         }
     }
 }
@@ -312,7 +381,7 @@ private fun GotoResultBanner(
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
-            containerColor = if (result.startsWith("错误")) Error.copy(alpha = 0.3f) else Accent.copy(alpha = 0.3f)
+            containerColor = if (result.startsWith("错误") || result.startsWith("回零位失败") || result.startsWith("设零位失败")) Error.copy(alpha = 0.3f) else Accent.copy(alpha = 0.3f)
         )
     ) {
         Row(
@@ -326,6 +395,51 @@ private fun GotoResultBanner(
             IconButton(onClick = onDismiss) {
                 Icon(Icons.Default.Close, contentDescription = "关闭", tint = TextSecondary)
             }
+        }
+    }
+}
+
+@Composable
+private fun ZeroPositionControls(
+    onHome: () -> Unit,
+    onSetZero: () -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        // 回零位按钮
+        Button(
+            onClick = onHome,
+            modifier = Modifier.weight(1f),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = Secondary
+            )
+        ) {
+            Icon(
+                Icons.Default.Home,
+                contentDescription = null,
+                modifier = Modifier.size(20.dp)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("回零位", color = TextPrimary)
+        }
+        
+        // 设为零位按钮
+        Button(
+            onClick = onSetZero,
+            modifier = Modifier.weight(1f),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = Secondary
+            )
+        ) {
+            Icon(
+                Icons.Default.AddLocation,
+                contentDescription = null,
+                modifier = Modifier.size(20.dp)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("设为零位", color = TextPrimary)
         }
     }
 }

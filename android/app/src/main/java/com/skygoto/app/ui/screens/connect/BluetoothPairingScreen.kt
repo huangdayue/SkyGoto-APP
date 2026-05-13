@@ -1,5 +1,3 @@
-@file:OptIn(ExperimentalMaterial3Api::class)
-
 package com.skygoto.app.ui.screens.connect
 
 import android.Manifest
@@ -7,6 +5,7 @@ import android.bluetooth.BluetoothDevice
 import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -21,25 +20,30 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
-import com.skygoto.app.data.datasource.BluetoothConnectionManager
-import com.skygoto.app.domain.repository.ConnectionManager
-import com.skygoto.app.domain.repository.PairedBluetoothDevice
+import com.skygoto.app.data.datasource.ScannedBluetoothDevice
 import com.skygoto.app.ui.theme.*
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BluetoothPairingScreen(
-    connectionManager: ConnectionManager,
-    bluetoothManager: BluetoothConnectionManager,
-    onDeviceSelected: (PairedBluetoothDevice) -> Unit,
+    isScanning: Boolean,
+    scannedDevices: List<ScannedBluetoothDevice>,
+    isConnecting: Boolean,
+    connectingDeviceName: String?,
+    error: String?,
+    onScanClick: () -> Unit,
+    onStopScanClick: () -> Unit,
+    onDeviceClick: (ScannedBluetoothDevice) -> Unit,
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
-    var hasPermission by remember {
+    
+    // 权限状态
+    var hasConnectPermission by remember {
         mutableStateOf(
             ContextCompat.checkSelfPermission(
                 context,
@@ -48,15 +52,30 @@ fun BluetoothPairingScreen(
         )
     }
     
+    var hasScanPermission by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.BLUETOOTH_SCAN
+            ) == PackageManager.PERMISSION_GRANTED
+        )
+    }
+    
     val permissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        hasPermission = granted
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        hasConnectPermission = permissions[Manifest.permission.BLUETOOTH_CONNECT] == true
+        hasScanPermission = permissions[Manifest.permission.BLUETOOTH_SCAN] == true
     }
     
     LaunchedEffect(Unit) {
-        if (!hasPermission) {
-            permissionLauncher.launch(Manifest.permission.BLUETOOTH_CONNECT)
+        if (!hasConnectPermission || !hasScanPermission) {
+            permissionLauncher.launch(
+                arrayOf(
+                    Manifest.permission.BLUETOOTH_CONNECT,
+                    Manifest.permission.BLUETOOTH_SCAN
+                )
+            )
         }
     }
     
@@ -75,7 +94,8 @@ fun BluetoothPairingScreen(
             colors = TopAppBarDefaults.topAppBarColors(containerColor = Primary)
         )
         
-        if (!hasPermission) {
+        if (!hasConnectPermission || !hasScanPermission) {
+            // 无权限提示
             Box(
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center
@@ -89,22 +109,159 @@ fun BluetoothPairingScreen(
                     )
                     Spacer(modifier = Modifier.height(16.dp))
                     Text(
-                        "需要蓝牙连接权限",
+                        "需要蓝牙权限",
                         style = MaterialTheme.typography.titleMedium,
                         color = TextSecondary
                     )
                     Spacer(modifier = Modifier.height(16.dp))
-                    Button(onClick = { permissionLauncher.launch(Manifest.permission.BLUETOOTH_CONNECT) }) {
+                    Button(onClick = {
+                        permissionLauncher.launch(
+                            arrayOf(
+                                Manifest.permission.BLUETOOTH_CONNECT,
+                                Manifest.permission.BLUETOOTH_SCAN
+                            )
+                        )
+                    }) {
                         Text("授予权限")
                     }
                 }
             }
         } else {
-            val pairedDevices = remember { connectionManager.getPairedBluetoothDevices() }
+            // 扫描按钮
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = if (scannedDevices.isEmpty()) "点击扫描附近的蓝牙设备" else "发现 ${scannedDevices.size} 个设备",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TextSecondary
+                )
+                
+                if (isScanning) {
+                    OutlinedButton(
+                        onClick = onStopScanClick,
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Error)
+                    ) {
+                        Icon(Icons.Default.Stop, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("停止扫描")
+                    }
+                } else {
+                    Button(
+                        onClick = onScanClick,
+                        colors = ButtonDefaults.buttonColors(containerColor = Accent)
+                    ) {
+                        Icon(Icons.Default.Radar, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("扫描")
+                    }
+                }
+            }
             
-            if (pairedDevices.isEmpty()) {
+            // 扫描动画
+            if (isScanning) {
                 Box(
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        val infiniteTransition = rememberInfiniteTransition(label = "scan")
+                        val rotation by infiniteTransition.animateFloat(
+                            initialValue = 0f,
+                            targetValue = 360f,
+                            animationSpec = infiniteRepeatable(
+                                animation = tween(1000, easing = LinearEasing),
+                                repeatMode = RepeatMode.Restart
+                            ),
+                            label = "rotation"
+                        )
+                        Icon(
+                            Icons.Default.Radar,
+                            contentDescription = null,
+                            modifier = Modifier
+                                .size(24.dp)
+                                .rotate(rotation),
+                            tint = Accent
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            "正在扫描...",
+                            color = Accent,
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    }
+                }
+            }
+            
+            // 连接中状态
+            if (isConnecting && connectingDeviceName != null) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    colors = CardDefaults.cardColors(containerColor = Accent.copy(alpha = 0.2f))
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp),
+                                color = Accent,
+                                strokeWidth = 2.dp
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text(
+                                "正在连接: $connectingDeviceName",
+                                color = TextPrimary
+                            )
+                        }
+                    }
+                }
+            }
+            
+            // 错误提示
+            error?.let {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    colors = CardDefaults.cardColors(containerColor = Error.copy(alpha = 0.2f))
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Default.ErrorOutline,
+                            contentDescription = null,
+                            tint = Error,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text(it, color = Error)
+                    }
+                }
+            }
+            
+            // 设备列表
+            if (scannedDevices.isEmpty() && !isScanning) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(32.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -112,17 +269,17 @@ fun BluetoothPairingScreen(
                             Icons.Default.BluetoothSearching,
                             contentDescription = null,
                             modifier = Modifier.size(64.dp),
-                            tint = TextSecondary
+                            tint = TextSecondary.copy(alpha = 0.5f)
                         )
                         Spacer(modifier = Modifier.height(16.dp))
                         Text(
-                            "未发现已配对设备",
+                            "未发现设备",
                             style = MaterialTheme.typography.titleMedium,
                             color = TextSecondary
                         )
                         Text(
-                            "请在系统设置中配对赤道仪蓝牙",
-                            style = MaterialTheme.typography.bodyMedium,
+                            "请点击\"扫描\"按钮搜索附近蓝牙设备",
+                            style = MaterialTheme.typography.bodySmall,
                             color = TextSecondary.copy(alpha = 0.7f)
                         )
                     }
@@ -133,11 +290,45 @@ fun BluetoothPairingScreen(
                     contentPadding = PaddingValues(16.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    items(pairedDevices) { device ->
-                        BluetoothDeviceItem(
-                            device = device,
-                            onClick = { onDeviceSelected(device) }
-                        )
+                    // 已配对设备分组
+                    val pairedDevices = scannedDevices.filter { it.isPaired }
+                    val unpairedDevices = scannedDevices.filter { !it.isPaired }
+                    
+                    if (pairedDevices.isNotEmpty()) {
+                        item {
+                            Text(
+                                "已配对设备",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = TextSecondary,
+                                modifier = Modifier.padding(bottom = 4.dp)
+                            )
+                        }
+                        items(pairedDevices) { device ->
+                            BluetoothDeviceItem(
+                                device = device,
+                                isConnecting = isConnecting && connectingDeviceName == device.name,
+                                onClick = { onDeviceClick(device) }
+                            )
+                        }
+                    }
+                    
+                    if (unpairedDevices.isNotEmpty()) {
+                        item {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                "附近设备",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = TextSecondary,
+                                modifier = Modifier.padding(bottom = 4.dp)
+                            )
+                        }
+                        items(unpairedDevices) { device ->
+                            BluetoothDeviceItem(
+                                device = device,
+                                isConnecting = isConnecting && connectingDeviceName == device.name,
+                                onClick = { onDeviceClick(device) }
+                            )
+                        }
                     }
                 }
             }
@@ -147,14 +338,17 @@ fun BluetoothPairingScreen(
 
 @Composable
 private fun BluetoothDeviceItem(
-    device: PairedBluetoothDevice,
+    device: ScannedBluetoothDevice,
+    isConnecting: Boolean,
     onClick: () -> Unit
 ) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick),
-        colors = CardDefaults.cardColors(containerColor = Secondary),
+            .clickable(enabled = !isConnecting, onClick = onClick),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isConnecting) Accent.copy(alpha = 0.1f) else Secondary
+        ),
         shape = RoundedCornerShape(12.dp)
     ) {
         Row(
@@ -167,37 +361,67 @@ private fun BluetoothDeviceItem(
                 modifier = Modifier
                     .size(48.dp)
                     .clip(CircleShape)
-                    .background(Accent.copy(alpha = 0.2f)),
+                    .background(
+                        if (device.isPaired) Accent.copy(alpha = 0.2f)
+                        else TextSecondary.copy(alpha = 0.2f)
+                    ),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    Icons.Default.Bluetooth,
-                    contentDescription = null,
-                    tint = Accent
-                )
+                if (isConnecting) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(24.dp),
+                        color = Accent,
+                        strokeWidth = 2.dp
+                    )
+                } else {
+                    Icon(
+                        Icons.Default.Bluetooth,
+                        contentDescription = null,
+                        tint = if (device.isPaired) Accent else TextSecondary
+                    )
+                }
             }
             
             Spacer(modifier = Modifier.width(16.dp))
             
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = device.name,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = TextPrimary
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = device.name,
+                        style = MaterialTheme.typography.titleMedium,
+                        color = TextPrimary
+                    )
+                    if (device.isPaired) {
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "已配对",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Accent
+                        )
+                    }
+                }
                 Text(
                     text = device.address,
                     style = MaterialTheme.typography.bodySmall,
                     color = TextSecondary,
                     fontFamily = FontFamily.Monospace
                 )
+                if (device.rssi != 0) {
+                    Text(
+                        text = "信号: ${device.rssi} dBm",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = TextSecondary.copy(alpha = 0.7f)
+                    )
+                }
             }
             
-            Icon(
-                Icons.Default.ChevronRight,
-                contentDescription = null,
-                tint = TextSecondary
-            )
+            if (!isConnecting) {
+                Icon(
+                    Icons.Default.ChevronRight,
+                    contentDescription = null,
+                    tint = TextSecondary
+                )
+            }
         }
     }
 }

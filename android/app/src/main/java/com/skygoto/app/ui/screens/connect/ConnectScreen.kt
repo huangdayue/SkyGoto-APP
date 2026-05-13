@@ -2,8 +2,12 @@
 
 package com.skygoto.app.ui.screens.connect
 
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -13,10 +17,12 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.skygoto.app.data.datasource.ScannedBluetoothDevice
 import com.skygoto.app.ui.theme.*
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -79,12 +85,11 @@ fun ConnectScreen(
                     )
                 }
                 ConnectionTabType.BLUETOOTH -> {
-                    BluetoothConnectionForm(
-                        pairedDevices = uiState.pairedDevices,
-                        isConnecting = uiState.isConnecting,
-                        error = uiState.error,
-                        onDeviceSelected = viewModel::connectBluetooth,
-                        onRefresh = viewModel::refreshBluetoothDevices
+                    BluetoothTabContent(
+                        uiState = uiState,
+                        onScanClick = viewModel::startBluetoothScan,
+                        onStopScanClick = viewModel::stopBluetoothScan,
+                        onDeviceClick = viewModel::connectToScannedDevice
                     )
                 }
             }
@@ -247,12 +252,11 @@ private fun WifiConnectionForm(
 }
 
 @Composable
-private fun BluetoothConnectionForm(
-    pairedDevices: List<Pair<String, String>>, // name, address
-    isConnecting: Boolean,
-    error: String?,
-    onDeviceSelected: (String, String) -> Unit,
-    onRefresh: () -> Unit
+private fun BluetoothTabContent(
+    uiState: ConnectUiState,
+    onScanClick: () -> Unit,
+    onStopScanClick: () -> Unit,
+    onDeviceClick: (ScannedBluetoothDevice) -> Unit
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -263,22 +267,89 @@ private fun BluetoothConnectionForm(
             modifier = Modifier.padding(24.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            // 扫描按钮和状态
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "已配对设备",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = TextPrimary
+                    text = if (uiState.scannedDevices.isEmpty()) "点击扫描附近蓝牙设备" 
+                           else "发现 ${uiState.scannedDevices.size} 个设备",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TextSecondary
                 )
-                IconButton(onClick = onRefresh) {
-                    Icon(Icons.Default.Refresh, contentDescription = "刷新", tint = Accent)
+                
+                if (uiState.isScanning) {
+                    OutlinedButton(
+                        onClick = onStopScanClick,
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Error)
+                    ) {
+                        Icon(Icons.Default.Stop, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("停止")
+                    }
+                } else {
+                    Button(
+                        onClick = onScanClick,
+                        colors = ButtonDefaults.buttonColors(containerColor = Accent)
+                    ) {
+                        Icon(Icons.Default.Radar, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("扫描")
+                    }
                 }
             }
             
-            if (pairedDevices.isEmpty()) {
+            // 扫描动画
+            if (uiState.isScanning) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    val infiniteTransition = rememberInfiniteTransition(label = "scan")
+                    val rotation by infiniteTransition.animateFloat(
+                        initialValue = 0f,
+                        targetValue = 360f,
+                        animationSpec = infiniteRepeatable(
+                            animation = tween(1000, easing = LinearEasing),
+                            repeatMode = RepeatMode.Restart
+                        ),
+                        label = "rotation"
+                    )
+                    Icon(
+                        Icons.Default.Radar,
+                        contentDescription = null,
+                        modifier = Modifier
+                            .size(24.dp)
+                            .rotate(rotation),
+                        tint = Accent
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("正在扫描...", color = Accent)
+                }
+            }
+            
+            // 错误提示
+            uiState.error?.let { error ->
+                Text(
+                    text = error,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Error
+                )
+            }
+            
+            // 连接中状态
+            if (uiState.isConnecting) {
+                LinearProgressIndicator(
+                    modifier = Modifier.fillMaxWidth(),
+                    color = Accent
+                )
+            }
+            
+            // 设备列表
+            if (uiState.scannedDevices.isEmpty() && !uiState.isScanning) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -294,41 +365,81 @@ private fun BluetoothConnectionForm(
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            "未发现已配对设备",
+                            "未发现设备",
                             style = MaterialTheme.typography.bodyMedium,
                             color = TextSecondary
                         )
                     }
                 }
             } else {
-                pairedDevices.forEach { (name, address) ->
-                    OutlinedButton(
-                        onClick = { onDeviceSelected(name, address) },
-                        modifier = Modifier.fillMaxWidth(),
-                        enabled = !isConnecting,
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Icon(Icons.Default.Bluetooth, contentDescription = null, tint = Accent)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(name)
+                // 已配对设备
+                val pairedDevices = uiState.scannedDevices.filter { it.isPaired }
+                val unpairedDevices = uiState.scannedDevices.filter { !it.isPaired }
+                
+                if (pairedDevices.isNotEmpty()) {
+                    Text(
+                        "已配对设备",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = TextSecondary
+                    )
+                    pairedDevices.forEach { device ->
+                        BluetoothDeviceButton(
+                            device = device,
+                            isConnecting = uiState.isConnecting,
+                            onClick = { onDeviceClick(device) }
+                        )
+                    }
+                }
+                
+                if (unpairedDevices.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        "附近设备",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = TextSecondary
+                    )
+                    unpairedDevices.forEach { device ->
+                        BluetoothDeviceButton(
+                            device = device,
+                            isConnecting = uiState.isConnecting,
+                            onClick = { onDeviceClick(device) }
+                        )
                     }
                 }
             }
-            
-            error?.let {
-                Text(
-                    text = it,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Error
-                )
-            }
-            
-            if (isConnecting) {
-                LinearProgressIndicator(
-                    modifier = Modifier.fillMaxWidth(),
-                    color = Accent
-                )
-            }
+        }
+    }
+}
+
+@Composable
+private fun BluetoothDeviceButton(
+    device: ScannedBluetoothDevice,
+    isConnecting: Boolean,
+    onClick: () -> Unit
+) {
+    OutlinedButton(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+        enabled = !isConnecting,
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Icon(
+            Icons.Default.Bluetooth, 
+            contentDescription = null, 
+            tint = if (device.isPaired) Accent else TextSecondary
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(
+            text = if (device.isPaired) device.name else "${device.name} (未配对)",
+            color = if (device.isPaired) TextPrimary else TextSecondary
+        )
+        if (device.rssi != 0) {
+            Spacer(modifier = Modifier.weight(1f))
+            Text(
+                "${device.rssi} dBm",
+                style = MaterialTheme.typography.labelSmall,
+                color = TextSecondary
+            )
         }
     }
 }

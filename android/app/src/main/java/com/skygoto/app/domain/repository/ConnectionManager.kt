@@ -37,12 +37,26 @@ class ConnectionManager @Inject constructor() {
             val connection = TcpConnection(host, port)
             currentConnection = connection
             
-            _connectionState.value = ConnectionState.Connected(
-                type = ConnectionType.WIFI,
-                deviceName = "$host:$port"
-            )
+            // 验证连接：尝试获取版本信息
+            val protocol = LX200Protocol(connection)
+            val versionResult = protocol.sendCommand(":GVP#")
             
-            Result.success(connection)
+            versionResult.fold(
+                onSuccess = { version ->
+                    _connectionState.value = ConnectionState.Connected(
+                        type = ConnectionType.WIFI,
+                        deviceName = "$host:$port",
+                        extraInfo = version.take(32)
+                    )
+                    Result.success(connection)
+                },
+                onFailure = { e ->
+                    connection.close()
+                    currentConnection = null
+                    _connectionState.value = ConnectionState.Error("连接验证失败: ${e.message}")
+                    Result.failure(e)
+                }
+            )
         } catch (e: Exception) {
             _connectionState.value = ConnectionState.Error(e.message ?: "Connection failed")
             currentConnection = null
@@ -85,13 +99,27 @@ class ConnectionManager @Inject constructor() {
             
             currentConnection = connection
             
-            _connectionState.value = ConnectionState.Connected(
-                type = ConnectionType.BLUETOOTH,
-                deviceName = deviceName,
-                deviceAddress = deviceAddress
-            )
+            // 验证连接：尝试获取版本信息
+            val protocol = LX200Protocol(connection)
+            val versionResult = protocol.sendCommand(":GVP#")
             
-            Result.success(connection)
+            versionResult.fold(
+                onSuccess = { version ->
+                    _connectionState.value = ConnectionState.Connected(
+                        type = ConnectionType.BLUETOOTH,
+                        deviceName = deviceName,
+                        deviceAddress = deviceAddress,
+                        extraInfo = version.take(32)
+                    )
+                    Result.success(connection)
+                },
+                onFailure = { e ->
+                    connection.close()
+                    currentConnection = null
+                    _connectionState.value = ConnectionState.Error("连接验证失败: ${e.message}")
+                    Result.failure(e)
+                }
+            )
         } catch (e: Exception) {
             _connectionState.value = ConnectionState.Error(e.message ?: "Connection failed")
             currentConnection = null

@@ -9,7 +9,8 @@ sealed class ConnectionState {
     data class Connected(
         val type: ConnectionType,
         val deviceName: String,
-        val deviceAddress: String = ""
+        val deviceAddress: String = "",
+        val extraInfo: String = ""
     ) : ConnectionState()
     data class Error(val message: String) : ConnectionState()
 }
