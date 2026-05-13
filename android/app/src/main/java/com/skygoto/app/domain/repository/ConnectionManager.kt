@@ -1,6 +1,7 @@
 package com.skygoto.app.domain.repository
 
 import com.skygoto.app.data.datasource.BluetoothConnectionManager
+import com.skygoto.app.data.protocol.LX200Protocol
 import com.skygoto.app.data.protocol.ProtocolConnection
 import com.skygoto.app.data.protocol.TcpConnection
 import com.skygoto.app.domain.model.ConnectionState

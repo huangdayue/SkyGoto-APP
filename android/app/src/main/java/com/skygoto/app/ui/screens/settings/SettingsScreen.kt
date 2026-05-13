@@ -13,6 +13,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import androidx.compose.material3.Divider
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -96,7 +97,7 @@ fun SettingsScreen(
                 }
             )
             
-            HorizontalDivider(color = Secondary)
+            Divider(color = Secondary)
             
             // 纬度
             SettingsTextField(
@@ -107,7 +108,7 @@ fun SettingsScreen(
                 placeholder = "30:00:00"
             )
             
-            HorizontalDivider(color = Secondary)
+            Divider(color = Secondary)
             
             // 位置格式选择
             SettingsDropdown(
@@ -118,7 +119,7 @@ fun SettingsScreen(
                 onOptionSelected = { viewModel.updateLocationFormat(it) }
             )
             
-            HorizontalDivider(color = Secondary)
+            Divider(color = Secondary)
             
             // 自动获取位置
             SettingsSwitch(
@@ -165,7 +166,7 @@ fun SettingsScreen(
             )
             
             if (!uiState.autoTimezone) {
-                HorizontalDivider(color = Secondary)
+                Divider(color = Secondary)
                 
                 // 时区选择器
                 SettingsDropdown(
@@ -229,7 +230,7 @@ fun SettingsScreen(
                 }
             }
             
-            HorizontalDivider(color = Secondary)
+            Divider(color = Secondary)
             
             // 同步到安卓设备时间
             SettingsClickable(
@@ -240,7 +241,7 @@ fun SettingsScreen(
                 enabled = !uiState.isSyncingTime
             )
             
-            HorizontalDivider(color = Secondary)
+            Divider(color = Secondary)
             
             // 同步到恒星时
             SettingsClickable(
