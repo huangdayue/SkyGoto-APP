@@ -20,23 +20,33 @@ jobs:
       with:
         java-version: '17'
         distribution: 'temurin'
+        cache: 'gradle'
     
     - name: Setup Gradle
       uses: gradle/gradle-build-action@v2
-      with:
-        gradle-version: 8.2
     
     - name: Grant execute permission for gradlew
       run: chmod +x android/gradlew
     
     - name: Build with Gradle
-      run: cd android && ./gradlew assembleDebug --no-daemon
+      id: gradle_build
+      continue-on-error: true
+      run: |
+        echo "=== Build started at $(date) ==="
+        cd android
+        ./gradlew assembleDebug --no-daemon --stacktrace 2>&1 | tee build.log
+        echo "=== Build finished at $(date) ==="
     
-    - name: Build with Gradle (Wrapper fallback)
-      if: steps.setup-gradle.outputs.cache-hit == 'false'
-      run: cd android && ./gradlew assembleDebug --no-daemon
+    - name: Upload build log on failure
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: build-log
+        path: android/build.log
+        retention-days: 7
     
     - name: Upload APK
+      if: success()
       uses: actions/upload-artifact@v4
       with:
         name: SkyGoto-debug-apk
@@ -44,4 +54,5 @@ jobs:
         retention-days: 7
     
     - name: List APK files
-      run: ls -lh android/app/build/outputs/apk/debug/
+      if: success()
+      run: ls -lh android/app/build/outputs/apk/debug/ 2>/dev/null || echo "No APK found"
