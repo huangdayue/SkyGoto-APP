@@ -29,30 +29,23 @@ jobs:
       run: chmod +x android/gradlew
     
     - name: Build with Gradle
-      id: gradle_build
-      continue-on-error: true
       run: |
         echo "=== Build started at $(date) ==="
         cd android
-        ./gradlew assembleDebug --no-daemon --stacktrace 2>&1 | tee build.log
-        echo "=== Build finished at $(date) ==="
+        ./gradlew assembleDebug --no-daemon 2>&1
+        EXIT_CODE=$?
+        echo "=== Gradle exit code: $EXIT_CODE ==="
+        if [ $EXIT_CODE -ne 0 ]; then
+          echo "Build failed with exit code $EXIT_CODE"
+          exit 1
+        fi
     
-    - name: Upload build log on failure
-      if: failure()
-      uses: actions/upload-artifact@v4
-      with:
-        name: build-log
-        path: android/build.log
-        retention-days: 7
+    - name: List APK files
+      run: ls -lh android/app/build/outputs/apk/debug/ 2>/dev/null || echo "No APK directory"
     
     - name: Upload APK
-      if: success()
       uses: actions/upload-artifact@v4
       with:
         name: SkyGoto-debug-apk
         path: android/app/build/outputs/apk/debug/app-debug.apk
         retention-days: 7
-    
-    - name: List APK files
-      if: success()
-      run: ls -lh android/app/build/outputs/apk/debug/ 2>/dev/null || echo "No APK found"
