@@ -1,6 +1,9 @@
 # OnStepX 赤道仪控制 APP - 技术规格书
 
-## 📅 创建日期：2026-05-12
+> **文档版本：** 2.0（更新于 2026-05-21）  
+> **项目：** SkyGoto Android APP
+
+---
 
 ## 1. 项目概述
 
@@ -8,14 +11,18 @@
 **SkyGoto** - OnStepX 赤道仪控制应用
 
 ### 1.2 目标
-开发一款安卓应用程序，通过 LX200 协议控制 OnStepX 赤道仪，实现天文观测的便捷控制。
+开发一款 Android 应用程序，通过 LX200 协议控制 OnStepX 赤道仪，实现天文观测的便捷控制。
 
 ### 1.3 平台
-- **最低 Android 版本**：Android 7.0 (API 24)
-- **目标 Android 版本**：Android 14 (API 34)
-- **开发语言**：Kotlin
-- **UI 框架**：Jetpack Compose
-- **架构**：MVVM + Clean Architecture
+| 项目 | 值 |
+|------|---|
+| 最低 Android 版本 | API 26（Android 8.0）|
+| 目标 Android 版本 | API 34（Android 14）|
+| 开发语言 | Kotlin 1.9+ |
+| UI 框架 | Jetpack Compose + Material3 |
+| 架构 | MVVM + Clean Architecture |
+| 依赖注入 | Hilt |
+| 异步 | Kotlin Coroutines + Flow |
 
 ---
 
@@ -23,57 +30,65 @@
 
 ### 2.1 连接管理
 
-| 功能 | 描述 |
-|------|------|
-| 蓝牙连接 | 扫描、配对、连接蓝牙串口设备 |
-| WiFi 连接 | 通过 IP:端口连接 TCP 串口 |
-| 连接状态 | 实时显示连接状态和信号质量 |
-| 自动重连 | 断开后自动尝试重连 |
+| 功能 | 描述 | 实现 |
+|------|------|------|
+| 蓝牙连接 | 扫描/连接已配对蓝牙设备 | `BluetoothConnectionManager` |
+| WiFi 连接 | IP + 端口 TCP 连接 | `TcpConnection` |
+| 连接状态 | 实时显示连接/断开/错误 | `ConnectionState` sealed class |
+| 自动重连 | 连接断开后自动尝试重连 | `ConnectionManager.startAutoReconnect()` |
 
 ### 2.2 手动控制
 
-| 功能 | 描述 |
-|------|------|
-| 方向控制 | 东/西/南/北四方向运动 |
-| 速率调节 | 1x, 2x, 4x, 8x, 16x, 64x 倍率 |
-| 追踪控制 | 启动/停止恒星时追踪 |
-| 停止 | 立即停止所有运动 |
+| 功能 | 命令 | 说明 |
+|------|------|------|
+| 方向移动 | `:Mn#` `:Me#` `:Mw#` `:Ms#` | N/E/W/S 四方向 |
+| 停止 | `:Q#` | 紧急停止所有运动 |
+| 速率调节 | `:R<n>#`（0-9）| 5 档速率（导星→GOTO）|
+| 追踪开关 | `:TC1#` / `:TC0#` | 恒星时追踪开/关 |
+| 回零位 | `:hC#` | 归位动作 |
+| 置零位 | `:FZ#` | 将当前位置设为零位 |
+| 停车 | `:hP#` | 停车 |
+| 解锁 | `:hR#` | 解除停车 |
 
 ### 2.3 天体数据库
 
-| 分类 | 示例 |
-|------|------|
-| **梅西耶天体** | M1-M110 全部 110 个 |
-| **NGC 天体** | 常见 NGC 对象（约 200 个）|
-| **星云** | 猎户座星云、蟹状星云等 |
-| **星系** | 仙女座星系、涡旋星系等 |
-| **星团** | 昴宿星团、礁湖星团等 |
+| 分类 | 数量 | 数据源 |
+|------|------|--------|
+| 梅西耶天体 | 110 | `MessierCatalog.json` |
+| NGC 天体 | ~200 | `NGCCatalog.json` |
+| 太阳系天体 | 10+ | `SolarSystemCatalog.json` + Skyfield 实时计算 |
+| 恒星 | 支持 | `StarCatalog.json` |
 
 ### 2.4 GOTO 功能
 
-| 功能 | 描述 |
+| 功能 | 实现 |
 |------|------|
-| 快速选择 | 下拉菜单选择目标 |
-| 一键 GOTO | 选中目标后自动 goto |
-| 状态显示 | 显示 goto 进度和预计时间 |
-| 中止 goto | 取消正在进行的 goto |
+| 目标选择 | 从目录选择天体，或手动输入坐标 |
+| 坐标设置 | `:SdRA#` + `:SdDec#` 设置目标 |
+| 执行 GOTO | `:MA#` 启动 GOTO |
+| 进度显示 | `GotoProgressDialog` 实时显示目标/当前坐标 |
+| 到位判断 | 精确 ±60 角秒 + 兜底 RA ±4秒 / Dec ±10秒 |
+| 取消 GOTO | `:Q#` 发送两次 |
+| 错误处理 | `GotoResult` sealed class + `GotoErrorCodes` |
 
-### 2.5 参数配置
+### 2.5 太阳系高精度计算
 
-| 参数 | 描述 |
+| 组件 | 说明 |
 |------|------|
-| 限位设置 | 设置东西方向限位角度 |
-| 跟踪速率 | 恒星时/太阳/月球跟踪 |
-| GOTO 速度 | 默认 goto 速率 |
-| 导星设置 | PEC/导星参数 |
+| Skyfield | Python 天文库，通过 Chaquopy 集成 |
+| JPL DE421 | 星历文件，计算行星实时位置 |
+| 计算链路 | Unix ms → JD → Skyfield → RA/Dec → 格式化 |
+| 备用方案 | 静态目录坐标（解析失败时）|
 
-### 2.6 状态显示
+### 2.6 参数配置
 
-- 当前赤道坐标 (RA/Dec)
-- 当前地平坐标 (Alt/Az)
-- 追踪状态
-- 连接状态
-- 当前目标
+| 参数 | 存储位置 |
+|------|----------|
+| 经度/纬度 | `SettingsDataStore`（DataStore Preferences）|
+| 时区 | `SettingsDataStore` |
+| 追踪模式 | `SettingsDataStore` |
+| 限位角度 | `SettingsDataStore` |
+| GOTO 速率 | `SettingsDataStore` |
 
 ---
 
@@ -82,45 +97,55 @@
 ### 3.1 分层架构
 
 ```
-┌─────────────────────────────────┐
-│         UI Layer (Compose)       │
-│    Screens, ViewModels, States   │
-├─────────────────────────────────┤
-│       Domain Layer                │
-│  UseCases, Repository Interfaces │
-├─────────────────────────────────┤
-│        Data Layer                 │
-│  Repositories, DataSources, API   │
-├─────────────────────────────────┤
-│      Device Layer                 │
-│   Bluetooth, WiFi, Serial I/O    │
-└─────────────────────────────────┘
+┌──────────────────────────────────────┐
+│         UI Layer (Compose)            │
+│   Screens, ViewModels, UiState         │
+├──────────────────────────────────────┤
+│          Domain Layer                  │
+│   Models, Repository Interfaces         │
+├──────────────────────────────────────┤
+│           Data Layer                   │
+│  Repositories, Protocol, DataSources   │
+├──────────────────────────────────────┤
+│         Device Layer                   │
+│    Bluetooth, WiFi, Python/Skyfield    │
+└──────────────────────────────────────┘
 ```
 
 ### 3.2 核心模块
 
-| 模块 | 职责 |
-|------|------|
-| `connection` | 蓝牙/WiFi 连接管理 |
-| `protocol` | LX200 协议编解码 |
-| `mount` | 赤道仪状态和控制 |
-| `catalog` | 天体数据库 |
-| `settings` | 参数配置存储 |
-
-### 3.3 LX200 协议命令（部分）
-
-| 命令 | 功能 | 示例 |
+| 模块 | 文件 | 职责 |
 |------|------|------|
-| `:Goto#` | GOTO 到坐标 | `:GR010.354#:GD+45.123#:Goto#` |
-| `:MA#` | 移动到已知天体 | `:MA M31#` |
-| `:MR#` | 向东移动 | `:MR 10#` (10x速率) |
-| `:MS#` | 停止移动 | `:MS#` |
-| `:Q#` | 立即停止 | `:Q#` |
-| `:Te#` | 获取赤经 | `:Te#` 返回 `+12:34:56` |
-| `:Td#` | 获取赤纬 | `:Td#` 返回 `-05:23:45` |
-| `:PO#` | 停止追踪 | `:PO#` |
-| `:ON#` | 开始追踪 | `:ON#` |
-| `:GS#` | 获取跟踪状态 | `:GS#` |
+| 连接管理 | `BluetoothConnectionManager.kt` | 蓝牙扫描、连接、RFCOMM 通信 |
+| 协议 | `LX200Protocol.kt` | LX200 命令发送、响应解析 |
+| 命令常量 | `LX200Commands.kt` | LX200 命令字符串常量 |
+| 赤道仪操作 | `MountRepositoryImpl.kt` | GOTO、追踪、移动、状态查询 |
+| 天体目录 | `CatalogRepositoryImpl.kt` | 梅西耶/NGC/太阳系/恒星数据加载 |
+| 天文计算 | `EnhancedAstronomyCalculator.kt` | 太阳系高精度位置计算（Skyfield）|
+
+### 3.3 依赖注入（AppModule）
+
+```kotlin
+@Module
+@InstallIn(SingletonComponent::class)
+object AppModule {
+    @Provides
+    @Singleton
+    fun provideBluetoothConnectionManager(...): BluetoothConnectionManager
+    
+    @Provides
+    @Singleton
+    fun provideLX200Protocol(connection: ProtocolConnection): LX200Protocol
+    
+    @Provides
+    @Singleton
+    fun provideMountRepository(...): MountRepository
+    
+    @Provides
+    @Singleton
+    fun provideCatalogRepository(...): CatalogRepository
+}
+```
 
 ---
 
@@ -130,119 +155,244 @@
 
 ```
 MainActivity
-├── ConnectScreen (连接页面)
-│   ├── BluetoothScanner
-│   └── WiFiConnector
-├── ControlScreen (主控页面)
-│   ├── StatusBar (状态栏)
-│   ├── DirectionPad (方向控制)
-│   ├── SpeedSelector (速率选择)
-│   └── TrackingToggle (追踪开关)
-├── CatalogScreen (天体目录)
-│   ├── CategoryTabs (梅西耶/NGC/星云/星系)
-│   ├── ObjectList (对象列表)
-│   └── ObjectDetail (详情)
-├── GotoScreen (GOTO 页面)
-│   ├── TargetSelector (目标选择)
-│   ├── CoordinateDisplay (坐标显示)
-│   └── GotoControls (执行控制)
-└── SettingsScreen (设置页面)
-    ├── LimitsSettings (限位设置)
-    ├── TrackingSettings (跟踪设置)
-    └── DeviceInfo (设备信息)
+└── NavHost（底部导航）
+    ├── ConnectScreen（连接页面）
+    │   ├── BluetoothTab（已配对设备列表）
+    │   └── WiFiTab（IP + 端口输入）
+    ├── ControlScreen（控制页面）
+    │   ├── StatusBar（RA/Dec/Alt/Az/追踪状态）
+    │   ├── DirectionPad（N/S/E/W + STOP）
+    │   ├── MoveRateSelector（5 档速率）
+    │   ├── TrackingToggle（追踪开关）
+    │   ├── GotoPanel（目标坐标 + 取消按钮）
+    │   └── GotoProgressDialog（GOTO 进度弹窗）
+    ├── CatalogScreen（目录页面）
+    │   ├── CategoryTabs（全部/梅西耶/NGC/太阳系/恒星）
+    │   ├── SearchBar（搜索框）
+    │   ├── ObjectList（天体列表）
+    │   └── ObjectDetailSheet（天体详情 + GOTO）
+    └── SettingsScreen（设置页面）
+        ├── LimitsSettings（限位角度）
+        ├── TrackingSettings（追踪模式）
+        ├── GotoSettings（GOTO 速率、容差）
+        ├── LocationSettings（经纬度）
+        └── DeviceInfo（固件版本、关于）
 ```
 
 ### 4.2 导航结构
 
-- **底部导航**：控制 / 目录 / 设置
-- **连接页面**：首次进入或断开连接时显示
-- **弹窗**：GOTO 确认、参数设置
+底部导航 4 个 Tab：`连接` / `控制` / `目录` / `设置`
+
+### 4.3 主题
+
+- **暗色主题**：适合夜间天文观测
+- **颜色方案**：深蓝背景（`#0A1628`）+ 青色强调（`#00D4FF`）+ 绿色成功（`#00FF88`）
 
 ---
 
 ## 5. 数据结构
 
-### 5.1 天体对象
-
-```kotlin
-data class CelestialObject(
-    val id: String,           // "M31", "NGC224"
-    val name: String,          // "仙女座星系"
-    val type: ObjectType,      // GALAXY, NEBULA, CLUSTER
-    val ra: String,            // "00h 42m 44s"
-    val dec: String,           // "+41° 16' 09\""
-    val magnitude: Double,     // 3.4
-    val constellation: String, // "Andromeda"
-    val description: String    // 简短描述
-)
-```
-
-### 5.2 连接状态
+### 5.1 ConnectionState（连接状态）
 
 ```kotlin
 sealed class ConnectionState {
     object Disconnected : ConnectionState()
     object Connecting : ConnectionState()
-    data class Connected(val type: ConnectionType, val deviceName: String) : ConnectionState()
+    data class Connected(
+        val type: ConnectionType,  // BLUETOOTH / WIFI
+        val deviceName: String,
+        val deviceAddress: String,
+        val extraInfo: String = ""
+    ) : ConnectionState()
     data class Error(val message: String) : ConnectionState()
+}
+```
+
+### 5.2 MountStatus（赤道仪状态）
+
+```kotlin
+data class MountStatus(
+    val ra: String = "--:--:--",       // 当前赤经
+    val dec: String = "--:--:--",       // 当前赤纬
+    val alt: String = "--:--",          // 高度
+    val az: String = "---:--",          // 方位角
+    val tracking: Boolean = false,      // 是否追踪中
+    val slewing: Boolean = false,       // 是否在移动中
+    val targetRa: String? = null,       // GOTO 目标赤经
+    val targetDec: String? = null      // GOTO 目标赤纬
+)
+```
+
+### 5.3 GotoResult（GOTO 结果）
+
+```kotlin
+sealed class GotoResult {
+    object Success : GotoResult()
+    data class GotoError(val code: Int, val message: String) : GotoResult()
+}
+
+object GotoErrorCodes {
+    const val BELOW_HORIZON = 1
+    const val ABOVE_OVERHEAD = 2
+    const val STANDBY = 3
+    const val PARKED = 4
+    const val GOTO_IN_PROGRESS = 5
+    const val OUTSIDE_LIMITS = 6
+    const val HARDWARE_ERROR = 7
+    const val ALREADY_SLEWING = 8
+}
+```
+
+### 5.4 CelestialObject（天体对象）
+
+```kotlin
+data class CelestialObject(
+    val id: String,
+    val name: String,
+    val nameEn: String = "",
+    val altNames: List<String> = emptyList(),
+    val type: ObjectType,
+    val ra: String,
+    val dec: String,
+    val raDeg: Double = 0.0,
+    val decDeg: Double = 0.0,
+    val constellation: String,
+    val magnitude: Double,
+    val description: String = ""
+)
+
+enum class ObjectType(val code: String, val cnName: String) {
+    GALAXY("GAL", "星系"),
+    NEBULA("DN", "星云"),
+    PLANETARY_NEBULA("PN", "行星状星云"),
+    OPEN_CLUSTER("OC", "疏散星团"),
+    GLOBULAR_CLUSTER("GC", "球状星团"),
+    PLANET("PLT", "行星"),
+    MOON("MON", "月亮"),
+    SUN("SUN", "太阳"),
+    STAR("STAR", "恒星"),
+    // ...
+}
+```
+
+### 5.5 TrackingMode（追踪模式）
+
+```kotlin
+enum class TrackingMode(val displayName: String, val rateHz: Double) {
+    SIDEREAL("恒星时", 60.0),
+    SOLAR("太阳", 60.0),
+    LUNAR("月球", 57.9),
+    STOPPED("停止", 0.0)
+}
+```
+
+### 5.6 MoveRate（移动速率）
+
+```kotlin
+enum class MoveRate(val displayName: String, val level: Int) {
+    GUIDE("导星 1x", 2),
+    CENTERING("居中 8x", 5),
+    FIND("寻找 20x", 6),
+    FAST("快速 48x", 7),
+    SLEW("GOTO速率", 8)
 }
 ```
 
 ---
 
-## 6. 验收标准
+## 6. LX200 协议实现
 
-### 6.1 连接
-- [ ] 能发现并连接蓝牙设备
-- [ ] 能通过 IP:端口连接 WiFi
-- [ ] 断开后能自动重连
-- [ ] 连接状态显示正确
+### 6.1 命令格式
 
-### 6.2 控制
-- [ ] 能控制东西南北四方向运动
-- [ ] 速率调节生效
-- [ ] 追踪开关正常工作
-- [ ] 停止命令响应及时
+```
+:Command# → 响应#
+:CommandParam# → 响应#
+```
 
-### 6.3 天体数据库
-- [ ] 梅西耶 110 个天体完整
-- [ ] 支持按分类筛选
-- [ ] 搜索功能正常
+### 6.2 坐标格式
 
-### 6.4 GOTO
-- [ ] 选择目标后显示坐标
-- [ ] 一键 goto 执行成功
-- [ ] goto 过程中能取消
-- [ ] 到位后显示完成状态
+- **RA**：`<sign>HH:MM:SS`（如 `+12:34:56`）
+- **Dec**：`<sign>DD*MM:SS`（如 `+45*12:34`）
+- 响应中 `#` 表示结束符
 
-### 6.5 设置
-- [ ] 限位设置保存成功
-- [ ] 跟踪速率切换生效
-- [ ] 设置持久化保存
+### 6.3 关键命令
 
----
-
-## 7. 风险和备选方案
-
-| 风险 | 应对 |
-|------|------|
-| LX200 协议兼容性 | 参考 OnStepX 源码和现有 APP |
-| 蓝牙连接不稳定 | 实现心跳机制和自动重连 |
-| 设备固件差异 | 支持多种固件版本检测 |
-| 低延迟要求 | 使用 Kotlin 协程和 Flow |
+| 命令 | 功能 | 响应 |
+|------|------|------|
+| `:GR#` | 获取赤经 | `+HH:MM:SS#` |
+| `:GD#` | 获取赤纬 | `+DD*MM:SS#` |
+| `:GS#` | 获取追踪状态 | `Tracking#` / `Idle#` |
+| `:GA#` | 获取高度 | `+DD*MM#` |
+| `:GZ#` | 获取方位 | `DDD*MM#` |
+| `:TC1#` | 开始追踪 | `1#` |
+| `:TC0#` | 停止追踪 | `0#` |
+| `:SdRA#` | 设置目标 RA | `1#` |
+| `:SdDec#` | 设置目标 Dec | `1#` |
+| `:MA#` | 执行 GOTO | `1#` 或错误码 |
+| `:Q#` | 停止移动 | `1#` |
 
 ---
 
-## 8. 开发计划
+## 7. GOTO 到位判断算法
 
-| 阶段 | 任务 | 预计工时 |
-|------|------|---------|
-| 1 | 项目搭建 + 依赖配置 | 1 天 |
-| 2 | 连接模块（蓝牙/WiFi）| 2 天 |
-| 3 | LX200 协议实现 | 2 天 |
-| 4 | 手动控制界面 | 1 天 |
-| 5 | 天体数据库 | 1 天 |
-| 6 | GOTO 功能 | 2 天 |
-| 7 | 设置页面 | 1 天 |
-| 8 | 测试和优化 | 2 天 |
-| **合计** | | **12 天** |
+```kotlin
+fun isCoordinateReached(currentRa: String, currentDec: String,
+                         targetRa: String, targetDec: String): Boolean {
+    // 1. 清理字符串（移除 \r \n 空格）
+    // 2. 统一分隔符（目标用 :，赤道仪返回可能用 *）
+    // 3. 精确比较：|raDiff| ≤ 60角秒 && |decDiff| ≤ 60角秒
+    // 4. 兜底比较：RA ±4秒，Dec ±10秒
+}
+```
+
+---
+
+## 8. 验收标准
+
+### 8.1 连接
+- [x] 能发现并连接蓝牙设备
+- [x] 能通过 IP:端口连接 WiFi
+- [x] 断开后显示错误状态
+- [x] 连接状态显示正确
+
+### 8.2 控制
+- [x] N/S/E/W 方向移动
+- [x] 速率调节（5 档）
+- [x] 追踪开关正常工作
+- [x] 停止命令响应及时
+
+### 8.3 天体目录
+- [x] 梅西耶 110 个天体
+- [x] NGC 目录
+- [x] 太阳系天体（实时计算位置）
+- [x] 按分类筛选
+- [x] 搜索功能
+
+### 8.4 GOTO
+- [x] 选择目标后显示坐标
+- [x] GOTO 执行并显示进度弹窗
+- [x] 到位后显示成功 Banner（3 秒自动消失）
+- [x] GOTO 过程中能取消
+- [x] 错误码正确解析并显示
+
+### 8.5 设置
+- [x] 经纬度保存
+- [x] 时区配置
+- [x] 追踪模式切换
+- [x] 设置持久化
+
+---
+
+## 9. 开发计划
+
+| 阶段 | 状态 | 说明 |
+|------|------|------|
+| 1. 项目搭建 | ✅ | MVVM + Hilt + Compose |
+| 2. 连接模块 | ✅ | 蓝牙 + WiFi 双连接 |
+| 3. LX200 协议 | ✅ | 命令发送/响应解析 |
+| 4. 手动控制 | ✅ | 方向/速率/追踪/停止 |
+| 5. 天体目录 | ✅ | 梅西耶 + NGC + 太阳系 |
+| 6. GOTO 功能 | ✅ | 进度弹窗 + 到位检测 |
+| 7. 设置页面 | ✅ | 经纬度/追踪/限位 |
+| 8. 太阳系计算 | ✅ | Skyfield + DE421 |
+| 9. 代码审查 | ✅ | 多轮修复 |
