@@ -18,6 +18,9 @@ class LX200Protocol(
 ) {
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     
+    val isConnected: Boolean
+        get() = connection.isConnected
+    
     suspend fun sendCommand(command: String): Result<String> = withContext(Dispatchers.IO) {
         try {
             val response = connection.sendAndReceive(command)
@@ -32,9 +35,10 @@ class LX200Protocol(
         val clean = str.trim().removePrefix("+")
         val parts = clean.split(":")
         if (parts.size < 3) return 0.0
-        return parts[0].toDoubleOrNull()!! + 
-               (parts[1].toDoubleOrNull()!! / 60.0) + 
-               (parts[2].toDoubleOrNull()!! / 3600.0)
+        val h = parts[0].toDoubleOrNull() ?: return 0.0
+        val m = parts[1].toDoubleOrNull() ?: return 0.0
+        val s = parts[2].toDoubleOrNull() ?: return 0.0
+        return h + m / 60.0 + s / 3600.0
     }
     
     // 解析 Dec: "+45*12:34" -> Double (度)
@@ -68,6 +72,19 @@ class LX200Protocol(
         return "%s%02d*%02d:%02d".format(sign, d, m, s)
     }
     
+    suspend fun sendCommandNoResponse(command: String): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            connection.sendCommandNoResponse(command)
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+    
+    suspend fun sendAndReadSingleDigit(command: String): String = withContext(Dispatchers.IO) {
+        connection.sendAndReceiveSingleChar(command)
+    }
+    
     fun close() {
         scope.cancel()
         connection.close()
@@ -79,6 +96,9 @@ class LX200Protocol(
  */
 interface ProtocolConnection {
     suspend fun sendAndReceive(command: String): String
+    suspend fun sendCommandNoResponse(command: String)
+    suspend fun sendAndReceiveSingleChar(command: String): String
+    suspend fun flushInput()
     fun close()
     val isConnected: Boolean
 }
@@ -101,6 +121,7 @@ class TcpConnection(
         get() = socket?.isConnected == true && !socket!!.isClosed
     
     override suspend fun sendAndReceive(command: String): String = withContext(Dispatchers.IO) {
+        flushInput()  // 发送前清空缓冲区
         ensureConnected()
         
         // 发送命令（带 # 结尾）
@@ -125,6 +146,40 @@ class TcpConnection(
         }
         
         response.toString()
+    }
+    
+    override suspend fun sendCommandNoResponse(command: String) {
+        flushInput()
+        ensureConnected()
+        
+        val fullCommand = if (command.endsWith("#")) command else "$command#"
+        writer!!.print(fullCommand)
+        writer!!.flush()
+        // 不等待响应，立即返回
+    }
+    
+    override suspend fun sendAndReceiveSingleChar(command: String): String = withContext(Dispatchers.IO) {
+        flushInput()
+        ensureConnected()
+        
+        val fullCommand = if (command.endsWith("#")) command else "$command#"
+        writer!!.print(fullCommand)
+        writer!!.flush()
+        
+        // 只读第一个字符，1秒超时
+        val buffer = CharArray(1)
+        val deadline = System.currentTimeMillis() + 1000
+        
+        while (System.currentTimeMillis() < deadline) {
+            val bytesRead = reader!!.read(buffer)
+            if (bytesRead == -1) break
+            return@withContext buffer[0].toString()
+        }
+        ""  // 超时返回空
+    }
+    
+    override suspend fun flushInput() {
+        // TCP 连接是面向流的，通常不需要清空
     }
     
     private fun ensureConnected() {

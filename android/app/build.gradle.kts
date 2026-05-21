@@ -2,6 +2,7 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("com.google.dagger.hilt.android")
+    id("com.chaquo.python") version "17.0.0"
     kotlin("kapt")
 }
 
@@ -11,7 +12,7 @@ android {
 
     defaultConfig {
         applicationId = "com.skygoto.app"
-        minSdk = 24
+        minSdk = 26
         targetSdk = 34
         versionCode = 1
         versionName = "1.0"
@@ -19,6 +20,12 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
             useSupportLibrary = true
+        }
+
+        // Chaquopy requires NDK ABI filters
+        // 只构建 arm64-v8a 以加快编译速度
+        ndk {
+            abiFilters += listOf("arm64-v8a")
         }
     }
 
@@ -51,6 +58,20 @@ android {
     }
 }
 
+// Chaquopy configuration for pip packages
+chaquopy {
+    defaultConfig {
+        version = "3.11"
+        pip {
+            // 直接使用本地 wheel 文件（完整路径）
+            install("/home/node/.openclaw/workspace/OnStepX-APP/android/skyfield-wheels/jplephem-2.24-py3-none-any.whl")
+            install("/home/node/.openclaw/workspace/OnStepX-APP/android/skyfield-wheels/skyfield-1.54-py3-none-any.whl")
+            install("/home/node/.openclaw/workspace/OnStepX-APP/android/skyfield-wheels/pytz-2026.2-py2.py3-none-any.whl")
+            // numpy 和其他依赖由 Chaquopy 自动从 chaquo.com 下载
+        }
+    }
+}
+
 dependencies {
     // Core Android
     implementation("androidx.core:core-ktx:1.12.0")
@@ -71,10 +92,11 @@ dependencies {
     // Lifecycle & ViewModel
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.6.2")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.6.2")
+    implementation("androidx.lifecycle:lifecycle-process:2.6.2")
 
     // Hilt
-    implementation("com.google.dagger:hilt-android:2.48")
-    kapt("com.google.dagger:hilt-compiler:2.48")
+    implementation("com.google.dagger:hilt-android:2.48.1")
+    kapt("com.google.dagger:hilt-compiler:2.48.1")
     implementation("androidx.hilt:hilt-navigation-compose:1.1.0")
 
     // Coroutines

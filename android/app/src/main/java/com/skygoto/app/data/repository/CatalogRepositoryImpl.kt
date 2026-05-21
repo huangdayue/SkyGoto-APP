@@ -7,6 +7,7 @@ import com.skygoto.app.domain.model.CelestialObject
 import com.skygoto.app.domain.model.ObjectType
 import com.skygoto.app.domain.repository.CatalogRepository
 import com.skygoto.app.domain.repository.CatalogType
+import com.skygoto.app.util.AppLogger
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -16,108 +17,159 @@ class CatalogRepositoryImpl @Inject constructor(
     @ApplicationContext private val context: Context
 ) : CatalogRepository {
     
-    private val gson = Gson()
-    
-    private val _messier: List<CelestialObject> by lazy {
-        loadCatalog("MessierCatalog.json")
+    companion object {
+        private const val TAG = "CatalogRepositoryImpl"
     }
     
-    private val _ngc: List<CelestialObject> by lazy {
-        loadCatalog("NGCCatalog.json")
+    private val gson = Gson()
+    
+    private val messierList: List<CelestialObject> by lazy {
+        AppLogger.d(TAG, "Loading Messier catalog...")
+        loadCatalog("MessierCatalog.json").also {
+            AppLogger.d(TAG, "Messier catalog loaded: ${it.size} objects")
+        }
+    }
+    
+    private val ngcList: List<CelestialObject> by lazy {
+        AppLogger.d(TAG, "Loading NGC catalog...")
+        loadCatalog("NGCCatalog.json").also {
+            AppLogger.d(TAG, "NGC catalog loaded: ${it.size} objects")
+        }
+    }
+    
+    private val solarSystemList: List<CelestialObject> by lazy {
+        AppLogger.d(TAG, "Loading Solar System catalog...")
+        loadCatalog("SolarSystemCatalog.json").also {
+            AppLogger.d(TAG, "Solar System catalog loaded: ${it.size} objects")
+        }
+    }
+    
+    private val starList: List<CelestialObject> by lazy {
+        AppLogger.d(TAG, "Loading Star catalog...")
+        loadCatalog("StarCatalog.json").also {
+            AppLogger.d(TAG, "Star catalog loaded: ${it.size} objects")
+        }
     }
     
     private fun loadCatalog(filename: String): List<CelestialObject> {
         return try {
+            AppLogger.d(TAG, "Opening asset: $filename")
             val json = context.assets.open(filename).bufferedReader().use { it.readText() }
+            AppLogger.d(TAG, "JSON loaded, length: ${json.length}")
+            
             val type = object : TypeToken<CatalogData>() {}.type
             val data: CatalogData = gson.fromJson(json, type)
-            data.objects.map { it.toCelestialObject() }
+            AppLogger.d(TAG, "Parsed CatalogData: catalog=${data.catalog}, objects=${data.objects.size}")
+            
+            data.objects.mapNotNull { obj ->
+                try {
+                    obj.toCelestialObject()
+                } catch (e: Exception) {
+                    AppLogger.e(TAG, "Error converting object ${obj.id}: ${e.message}")
+                    null
+                }
+            }.also {
+                AppLogger.d(TAG, "Converted $filename: ${it.size} objects successfully")
+            }
         } catch (e: Exception) {
+            AppLogger.e(TAG, "Failed to load $filename", e)
             emptyList()
         }
     }
     
-    override fun getMessierCatalog(): List<CelestialObject> = _messier
+    override fun getMessierCatalog(): List<CelestialObject> = messierList
     
-    override fun getNGCCatalog(): List<CelestialObject> = _ngc
+    override fun getNGCCatalog(): List<CelestialObject> = ngcList
+    
+    override fun getSolarSystemCatalog(): List<CelestialObject> = solarSystemList
+    
+    override fun getStarCatalog(): List<CelestialObject> = starList
     
     override fun search(query: String, catalog: CatalogType?): List<CelestialObject> {
         val q = query.lowercase().trim()
         if (q.isEmpty()) return emptyList()
         
         val source = when (catalog) {
-            CatalogType.MESSIER -> _messier
-            CatalogType.NGC -> _ngc
-            else -> _messier + _ngc
+            CatalogType.MESSIER -> messierList
+            CatalogType.NGC -> ngcList
+            CatalogType.SOLAR_SYSTEM -> solarSystemList
+            CatalogType.STAR -> starList
+            else -> messierList + ngcList + solarSystemList + starList
         }
         
         return source.filter { obj ->
             obj.id.lowercase().contains(q) ||
             obj.name.lowercase().contains(q) ||
             obj.constellation.lowercase().contains(q) ||
-            obj.altNames.any { it.lowercase().contains(q) }
+            obj.altNames.any { alt -> alt.lowercase().contains(q) }
         }
     }
     
     override fun filterByType(type: ObjectType, catalog: CatalogType?): List<CelestialObject> {
         val source = when (catalog) {
-            CatalogType.MESSIER -> _messier
-            CatalogType.NGC -> _ngc
-            else -> _messier + _ngc
+            CatalogType.MESSIER -> messierList
+            CatalogType.NGC -> ngcList
+            CatalogType.SOLAR_SYSTEM -> solarSystemList
+            CatalogType.STAR -> starList
+            else -> messierList + ngcList + solarSystemList + starList
         }
         return source.filter { it.type == type }
     }
     
     override fun filterByConstellation(constellation: String, catalog: CatalogType?): List<CelestialObject> {
         val source = when (catalog) {
-            CatalogType.MESSIER -> _messier
-            CatalogType.NGC -> _ngc
-            else -> _messier + _ngc
+            CatalogType.MESSIER -> messierList
+            CatalogType.NGC -> ngcList
+            CatalogType.SOLAR_SYSTEM -> solarSystemList
+            else -> messierList + ngcList + solarSystemList
         }
         return source.filter { it.constellation.contains(constellation, ignoreCase = true) }
     }
 }
 
-// JSON 数据结构
 private data class CatalogData(
     val catalog: String,
     val description: String,
     val version: String,
-    val totalCount: Int,
+    val totalCount: Int? = null,
     val objects: List<CatalogObject>
 )
 
 private data class CatalogObject(
     val id: String,
     val name: String,
-    @com.google.gson.annotations.SerializedName("name_en")
-    val nameEn: String = "",
+    val name_en: String? = null,
     val altNames: List<String>? = null,
     val type: String,
-    @com.google.gson.annotations.SerializedName("type_cn")
-    val typeCn: String = "",
+    val type_cn: String? = null,
     val ra: String,
     val dec: String,
     val constellation: String,
     val magnitude: Double,
-    @com.google.gson.annotations.SerializedName("ra_deg")
-    val raDeg: Double = 0.0,
-    @com.google.gson.annotations.SerializedName("dec_deg")
-    val decDeg: Double = 0.0,
-    val description: String = ""
+    val ra_deg: Double? = null,
+    val dec_deg: Double? = null,
+    val description: String? = null
 ) {
-    fun toCelestialObject(): CelestialObject = CelestialObject(
-        id = id,
-        name = name,
-        nameEn = nameEn,
-        altNames = if (altNames.isNullOrEmpty()) listOf(nameEn) else altNames,
-        type = ObjectType.fromCode(type),
-        ra = ra,
-        dec = dec,
-        raDeg = raDeg,
-        decDeg = decDeg,
-        constellation = constellation,
-        magnitude = magnitude,
-        description = description
-    )
+    fun toCelestialObject(): CelestialObject {
+        val altNamesList = when {
+            !altNames.isNullOrEmpty() -> altNames!!
+            !name_en.isNullOrBlank() -> listOf(name_en!!)
+            else -> emptyList()
+        }
+        
+        return CelestialObject(
+            id = id,
+            name = name,
+            nameEn = name_en ?: "",
+            altNames = altNamesList,
+            type = ObjectType.fromCode(type),
+            ra = ra,
+            dec = dec,
+            raDeg = ra_deg ?: 0.0,
+            decDeg = dec_deg ?: 0.0,
+            constellation = constellation,
+            magnitude = magnitude,
+            description = description ?: ""
+        )
+    }
 }

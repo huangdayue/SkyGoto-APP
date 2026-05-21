@@ -300,6 +300,10 @@ private class BluetoothConnection(
     override val isConnected: Boolean
         get() = socket.isConnected
     
+    override suspend fun flushInput() {
+        // 蓝牙连接不需要清空缓冲区
+    }
+    
     override suspend fun sendAndReceive(command: String): String = withContext(Dispatchers.IO) {
         if (!socket.isConnected) throw IOException("Socket not connected")
         
@@ -328,9 +332,32 @@ private class BluetoothConnection(
         response.toString()
     }
     
+    override suspend fun sendCommandNoResponse(command: String) {
+        if (!socket.isConnected) return
+        val fullCommand = "$command#"
+        writer.write(fullCommand)
+        writer.flush()
+    }
+    
+    override suspend fun sendAndReceiveSingleChar(command: String): String = withContext(Dispatchers.IO) {
+        if (!socket.isConnected) return@withContext ""
+        val fullCommand = "$command#"
+        writer.write(fullCommand)
+        writer.flush()
+        
+        val buffer = CharArray(1)
+        val deadline = System.currentTimeMillis() + 1000
+        while (System.currentTimeMillis() < deadline) {
+            val bytesRead = reader.read(buffer)
+            if (bytesRead == -1) break
+            return@withContext buffer[0].toString()
+        }
+        ""
+    }
+    
     override fun close() {
         try {
-            socket.close()
+            socket?.close()
         } catch (e: IOException) {
             // 忽略关闭错误
         }

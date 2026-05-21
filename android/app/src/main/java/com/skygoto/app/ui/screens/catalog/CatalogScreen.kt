@@ -18,6 +18,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.DialogProperties
+import kotlinx.coroutines.delay
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.skygoto.app.domain.model.CelestialObject
@@ -29,6 +31,7 @@ import com.skygoto.app.ui.theme.*
 @Composable
 fun CatalogScreen(
     viewModel: CatalogViewModel = hiltViewModel(),
+@Suppress("UNUSED_PARAMETER")  // Deprecated: use gotoObject directly
     onGoto: (String, String) -> Unit = { _, _ -> }
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -96,7 +99,7 @@ fun CatalogScreen(
                     CelestialObjectItem(
                         obj = obj,
                         onClick = { viewModel.selectObject(obj) },
-                        onGoto = { onGoto(obj.ra, obj.dec) }
+                        onGoto = { viewModel.gotoObject(obj) }
                     )
                 }
             }
@@ -109,9 +112,25 @@ fun CatalogScreen(
             obj = obj,
             onDismiss = { viewModel.selectObject(null) },
             onGoto = {
-                onGoto(obj.ra, obj.dec)
+                viewModel.gotoObject(obj)
                 viewModel.selectObject(null)
             }
+        )
+    }
+    
+    // GOTO 进度弹窗
+    uiState.gotoProgressInfo?.let { progressInfo ->
+        GotoProgressDialog(
+            progressInfo = progressInfo,
+            onConfirm = { viewModel.dismissGotoProgress() }
+        )
+    }
+    
+    // GOTO 结果 Banner（失败/成功提示，弹窗关闭后显示）
+    uiState.gotoResult?.let { result ->
+        GotoResultBanner(
+            result = result,
+            onDismiss = { viewModel.clearGotoResult() }
         )
     }
 }
@@ -167,6 +186,8 @@ private fun CatalogSelector(
                             CatalogType.MESSIER -> "梅西耶"
                             CatalogType.NGC -> "NGC"
                             CatalogType.IC -> "IC"
+                            CatalogType.SOLAR_SYSTEM -> "太阳系"
+                            CatalogType.STAR -> "恒星"
                         }
                     )
                 },
@@ -374,5 +395,145 @@ private fun TypeBadge(type: String) {
             color = Accent,
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
         )
+    }
+}
+@Composable
+private fun GotoProgressDialog(
+    progressInfo: com.skygoto.app.ui.screens.catalog.GotoProgressInfo,
+    onConfirm: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = { /* 禁止点击遮罩关闭 */ },
+        properties = DialogProperties(
+            dismissOnBackPress = false,
+            dismissOnClickOutside = false
+        ),
+        confirmButton = {
+            Button(
+                onClick = onConfirm,
+                enabled = progressInfo.isFinished,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Accent,
+                    disabledContainerColor = Accent.copy(alpha = 0.3f)
+                ),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text(
+                    text = "确定",
+                    color = if (progressInfo.isFinished) Primary else TextSecondary,
+                    style = MaterialTheme.typography.titleMedium
+                )
+            }
+        },
+        title = {
+            Text(
+                text = "${progressInfo.objectId} GOTO执行中",
+                style = MaterialTheme.typography.titleLarge,
+                color = Accent,
+                fontWeight = FontWeight.Bold
+            )
+        },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = "目标 RA：${progressInfo.targetRa}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TextPrimary,
+                    fontFamily = FontFamily.Monospace
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "目标DEC：${progressInfo.targetDec}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TextPrimary,
+                    fontFamily = FontFamily.Monospace
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+                Divider(color = TextSecondary.copy(alpha = 0.3f))
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Text(
+                    text = "当前 RA：${progressInfo.currentRa}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (progressInfo.isFinished) Accent else TextSecondary,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = if (progressInfo.isFinished) FontWeight.Bold else FontWeight.Normal
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "当前DEC：${progressInfo.currentDec}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (progressInfo.isFinished) Accent else TextSecondary,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = if (progressInfo.isFinished) FontWeight.Bold else FontWeight.Normal
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                if (!progressInfo.isFinished) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            color = Accent,
+                            strokeWidth = 2.dp
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "赤道仪移动中...",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextSecondary
+                        )
+                    }
+                } else {
+                    Text(
+                        text = "✓ 目标已锁定",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Accent,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+        },
+        containerColor = Secondary,
+        titleContentColor = Accent,
+        textContentColor = TextPrimary
+    )
+}
+
+@Composable
+private fun GotoResultBanner(
+    result: String,
+    onDismiss: () -> Unit
+) {
+    LaunchedEffect(result) {
+        delay(3000L)
+        onDismiss()
+    }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = if (result.contains("失败") || result.contains("错误") || result.contains("断开")) Error.copy(alpha = 0.3f) else Accent.copy(alpha = 0.3f)
+        )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(result, color = TextPrimary)
+            IconButton(onClick = onDismiss) {
+                Icon(Icons.Default.Close, contentDescription = "关闭", tint = TextSecondary)
+            }
+        }
     }
 }

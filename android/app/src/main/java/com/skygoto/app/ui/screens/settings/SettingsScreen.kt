@@ -1,6 +1,7 @@
 package com.skygoto.app.ui.screens.settings
 
 import android.Manifest
+import android.annotation.SuppressLint
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -20,6 +21,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import com.skygoto.app.ui.theme.*
 
 @Composable
@@ -27,6 +31,20 @@ fun SettingsScreen(
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val lifecycleOwner = LocalLifecycleOwner.current
+    
+    // 监听页面可见性，进入时自动加载赤道仪信息
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                viewModel.loadAllFromMount()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
     
     // 位置权限请求
     val locationPermissionLauncher = rememberLauncherForActivityResult(
@@ -36,7 +54,7 @@ fun SettingsScreen(
         val coarseLocation = permissions[Manifest.permission.ACCESS_COARSE_LOCATION] ?: false
         viewModel.updateHasLocationPermission(fineLocation || coarseLocation)
         if (fineLocation || coarseLocation) {
-            viewModel.requestLocation()
+            viewModel.syncPhoneLocationToMount()
         }
     }
     
@@ -55,126 +73,56 @@ fun SettingsScreen(
         
         Spacer(modifier = Modifier.height(24.dp))
         
-        // ==================== 位置设置 ====================
-        SettingsSection(title = "位置") {
-            // 经度
-            SettingsTextField(
+        // ==================== 赤道仪位置 ====================
+        SettingsSection(title = "赤道仪位置") {
+            // 经度（只读，显示从赤道仪获取的位置）
+            SettingsTextFieldReadOnly(
                 icon = Icons.Default.Public,
                 title = "经度",
                 value = uiState.longitude,
-                onValueChange = { viewModel.updateLongitude(it) },
-                placeholder = "120:00:00",
-                trailing = {
-                    IconButton(
-                        onClick = { 
-                            if (uiState.hasLocationPermission) {
-                                viewModel.requestLocation()
-                            } else {
-                                locationPermissionLauncher.launch(
-                                    arrayOf(
-                                        Manifest.permission.ACCESS_FINE_LOCATION,
-                                        Manifest.permission.ACCESS_COARSE_LOCATION
-                                    )
-                                )
-                            }
-                        },
-                        enabled = !uiState.isGettingLocation
-                    ) {
-                        if (uiState.isGettingLocation) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(20.dp),
-                                color = Accent,
-                                strokeWidth = 2.dp
-                            )
-                        } else {
-                            Icon(
-                                Icons.Default.MyLocation,
-                                contentDescription = "自动获取",
-                                tint = Accent
-                            )
-                        }
-                    }
-                }
+                placeholder = "120:00:00"
             )
             
             Divider(color = Secondary)
             
-            // 纬度
-            SettingsTextField(
+            // 纬度（只读，显示从赤道仪获取的位置）
+            SettingsTextFieldReadOnly(
                 icon = Icons.Default.Place,
                 title = "纬度",
                 value = uiState.latitude,
-                onValueChange = { viewModel.updateLatitude(it) },
                 placeholder = "30:00:00"
             )
             
             Divider(color = Secondary)
             
-            // 位置格式选择
-            SettingsDropdown(
-                icon = Icons.Default.Straighten,
-                title = "格式",
-                selectedValue = uiState.locationFormat,
-                options = listOf("DMS" to "度分秒 (DD:MM:SS)", "DECIMAL" to "十进制"),
-                onOptionSelected = { viewModel.updateLocationFormat(it) }
-            )
-            
-            Divider(color = Secondary)
-            
-            // 自动获取位置
-            SettingsSwitch(
-                icon = Icons.Default.LocationOn,
-                title = "自动获取位置",
-                subtitle = "使用 GPS 自动获取当前位置",
-                checked = uiState.autoLocation,
-                onCheckedChange = { 
-                    if (it && !uiState.hasLocationPermission) {
+            // 同步手机 GPS 到赤道仪按钮
+            SettingsClickable(
+                icon = Icons.Default.Smartphone,
+                title = "同步手机位置至赤道仪",
+                subtitle = "将手机 GPS 位置发送给赤道仪",
+                onClick = {
+                    if (uiState.hasLocationPermission) {
+                        viewModel.syncPhoneLocationToMount()
+                    } else {
                         locationPermissionLauncher.launch(
                             arrayOf(
                                 Manifest.permission.ACCESS_FINE_LOCATION,
                                 Manifest.permission.ACCESS_COARSE_LOCATION
                             )
                         )
-                    } else {
-                        viewModel.setAutoLocation(it)
                     }
-                }
+                },
+                enabled = !uiState.isSyncingLocation && uiState.isMountConnected,
+                isLoading = uiState.isSyncingLocation
             )
             
             // 位置错误提示
-            uiState.locationError?.let { error ->
+            uiState.locationError?.let { err ->
                 Text(
-                    text = error,
+                    text = err,
                     style = MaterialTheme.typography.bodySmall,
                     color = Error,
                     modifier = Modifier.padding(horizontal = 48.dp, vertical = 4.dp)
-                )
-            }
-        }
-        
-        Spacer(modifier = Modifier.height(16.dp))
-        
-        // ==================== 时区设置 ====================
-        SettingsSection(title = "时区") {
-            // 自动检测时区
-            SettingsSwitch(
-                icon = Icons.Default.Schedule,
-                title = "自动检测时区",
-                subtitle = "使用设备当前时区",
-                checked = uiState.autoTimezone,
-                onCheckedChange = { viewModel.setAutoTimezone(it) }
-            )
-            
-            if (!uiState.autoTimezone) {
-                Divider(color = Secondary)
-                
-                // 时区选择器
-                SettingsDropdown(
-                    icon = Icons.Default.AccessTime,
-                    title = "选择时区",
-                    selectedValue = uiState.timezone,
-                    options = uiState.availableTimezones.map { it to it },
-                    onOptionSelected = { viewModel.updateTimezone(it) }
                 )
             }
         }
@@ -235,27 +183,27 @@ fun SettingsScreen(
             // 同步到安卓设备时间
             SettingsClickable(
                 icon = Icons.Default.PhoneAndroid,
-                title = "同步到设备时间",
-                subtitle = "将安卓设备时间同步到赤道仪",
+                title = "同步时间到赤道仪",
+                subtitle = "将安卓设备日期、时间和时区同步到赤道仪",
                 onClick = { viewModel.syncToAndroidTime() },
-                enabled = !uiState.isSyncingTime
+                enabled = !uiState.isSyncingTime && uiState.isMountConnected
             )
             
             Divider(color = Secondary)
             
-            // 同步到恒星时
-            SettingsClickable(
-                icon = Icons.Default.AutoMode,
-                title = "同步到恒星时",
-                subtitle = "计算并同步当前恒星时",
-                onClick = { viewModel.syncToSiderealTime() },
-                enabled = !uiState.isSyncingTime
-            )
+            // 同步到恒星时（已移除，用户要求删除）
+            // SettingsClickable(
+            //     icon = Icons.Default.AutoMode,
+            //     title = "同步到恒星时",
+            //     subtitle = "计算并同步当前恒星时",
+            //     onClick = { viewModel.calculateSiderealTime() },
+            //     enabled = !uiState.isSyncingTime && uiState.isMountConnected
+            // )
             
             // 错误提示
-            uiState.mountTimeError?.let { error ->
+            uiState.mountTimeError?.let { err ->
                 Text(
-                    text = error,
+                    text = err,
                     style = MaterialTheme.typography.bodySmall,
                     color = Error,
                     modifier = Modifier.padding(horizontal = 48.dp, vertical = 4.dp)
@@ -276,6 +224,31 @@ fun SettingsScreen(
                 icon = Icons.Default.Language,
                 title = "语言",
                 subtitle = "简体中文"
+            )
+        }
+        
+        Spacer(modifier = Modifier.height(16.dp))
+        
+        // ==================== 日志 ====================
+        SettingsSection(title = "日志") {
+            SettingsClickable(
+                icon = Icons.Default.Description,
+                title = "导出日志",
+                subtitle = "将日志文件分享到其他应用",
+                onClick = {
+                    viewModel.exportLogs()
+                }
+            )
+            
+            Divider(color = Secondary)
+            
+            SettingsClickable(
+                icon = Icons.Default.Delete,
+                title = "清空日志",
+                subtitle = "删除当前已记录的日志数据",
+                onClick = {
+                    viewModel.clearLogs()
+                }
             )
         }
         
@@ -344,6 +317,37 @@ private fun SettingsItem(
         Column(modifier = Modifier.weight(1f)) {
             Text(title, style = MaterialTheme.typography.bodyLarge, color = TextPrimary)
             Text(subtitle, style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+        }
+    }
+}
+
+@Composable
+private fun SettingsTextFieldReadOnly(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    value: String,
+    placeholder: String = ""
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            icon,
+            contentDescription = null,
+            tint = TextSecondary,
+            modifier = Modifier.size(24.dp)
+        )
+        Spacer(modifier = Modifier.width(16.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.bodyLarge, color = TextPrimary)
+            Text(
+                text = value.ifEmpty { placeholder },
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (value.isEmpty()) TextSecondary else TextPrimary
+            )
         }
     }
 }
@@ -442,7 +446,8 @@ private fun SettingsClickable(
     title: String,
     subtitle: String? = null,
     onClick: () -> Unit,
-    enabled: Boolean = true
+    enabled: Boolean = true,
+    isLoading: Boolean = false
 ) {
     Row(
         modifier = Modifier
@@ -451,12 +456,20 @@ private fun SettingsClickable(
             .padding(12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(
-            icon,
-            contentDescription = null,
-            tint = if (enabled) TextSecondary else TextSecondary.copy(alpha = 0.5f),
-            modifier = Modifier.size(24.dp)
-        )
+        if (isLoading) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(24.dp),
+                color = Accent,
+                strokeWidth = 2.dp
+            )
+        } else {
+            Icon(
+                icon,
+                contentDescription = null,
+                tint = if (enabled) TextSecondary else TextSecondary.copy(alpha = 0.5f),
+                modifier = Modifier.size(24.dp)
+            )
+        }
         Spacer(modifier = Modifier.width(16.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(

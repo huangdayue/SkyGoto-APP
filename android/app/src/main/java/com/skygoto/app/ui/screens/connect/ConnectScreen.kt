@@ -2,6 +2,10 @@
 
 package com.skygoto.app.ui.screens.connect
 
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -18,9 +22,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.skygoto.app.data.datasource.ScannedBluetoothDevice
 import com.skygoto.app.ui.theme.*
@@ -33,6 +39,17 @@ fun ConnectScreen(
     val uiState by viewModel.uiState.collectAsState()
     val isConnected by viewModel.isConnected.collectAsState()
     val connectionType by viewModel.connectionType.collectAsState()
+    val snackbarHostState = remember { SnackbarHostState() }
+    
+    // 显示连接成功提示
+    LaunchedEffect(uiState.showConnectedToast) {
+        if (uiState.showConnectedToast) {
+            val version = uiState.firmwareVersion
+            val msg = if (version.isNotBlank()) "连接成功 | 固件: $version" else "连接成功"
+            snackbarHostState.showSnackbar(msg, duration = SnackbarDuration.Short)
+            viewModel.clearConnectedToast()
+        }
+    }
     
     Column(
         modifier = Modifier
@@ -46,13 +63,13 @@ fun ConnectScreen(
         // Logo / Title
         Text(
             text = "SkyGoto",
-            style = MaterialTheme.typography.displayMedium,
+            style = MaterialTheme.typography.headlineMedium,
             color = Accent,
             fontWeight = FontWeight.Bold
         )
         Text(
             text = "赤道仪控制器",
-            style = MaterialTheme.typography.titleMedium,
+            style = MaterialTheme.typography.bodyMedium,
             color = TextSecondary
         )
         
@@ -97,6 +114,7 @@ fun ConnectScreen(
             ConnectedInfo(
                 connectionType = if (uiState.isWifiConnection) "WiFi" else "蓝牙",
                 address = uiState.deviceName,
+                firmwareVersion = uiState.firmwareVersion,
                 onDisconnect = viewModel::disconnect
             )
         }
@@ -109,6 +127,11 @@ fun ConnectScreen(
             style = MaterialTheme.typography.labelSmall,
             color = TextSecondary.copy(alpha = 0.5f)
         )
+        
+        Spacer(modifier = Modifier.height(56.dp))
+        
+        // Snackbar 显示区域
+        SnackbarHost(hostState = snackbarHostState)
     }
 }
 
@@ -142,7 +165,7 @@ private fun ConnectionIndicator(isConnected: Boolean) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Box(
             modifier = Modifier
-                .size(120.dp)
+                .size(70.dp)
                 .clip(CircleShape)
                 .background(if (isConnected) Accent2.copy(alpha = 0.2f) else Secondary),
             contentAlignment = Alignment.Center
@@ -150,7 +173,7 @@ private fun ConnectionIndicator(isConnected: Boolean) {
             Icon(
                 imageVector = if (isConnected) Icons.Default.CloudDone else Icons.Default.CloudOff,
                 contentDescription = null,
-                modifier = Modifier.size(64.dp),
+                modifier = Modifier.size(36.dp),
                 tint = if (isConnected) Accent2 else TextSecondary
             )
         }
@@ -258,6 +281,46 @@ private fun BluetoothTabContent(
     onStopScanClick: () -> Unit,
     onDeviceClick: (ScannedBluetoothDevice) -> Unit
 ) {
+    val context = LocalContext.current
+    
+    // 权限状态
+    var hasBluetoothPermission by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.BLUETOOTH_CONNECT
+            ) == PackageManager.PERMISSION_GRANTED
+        )
+    }
+    var hasScanPermission by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.BLUETOOTH_SCAN
+            ) == PackageManager.PERMISSION_GRANTED
+        )
+    }
+    var hasLocationPermission by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.ACCESS_FINE_LOCATION
+            ) == PackageManager.PERMISSION_GRANTED
+        )
+    }
+    
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        hasBluetoothPermission = permissions[Manifest.permission.BLUETOOTH_CONNECT] == true
+        hasScanPermission = permissions[Manifest.permission.BLUETOOTH_SCAN] == true
+        hasLocationPermission = permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true
+        // 权限授予后自动开始扫描
+        if (hasBluetoothPermission && hasScanPermission) {
+            onScanClick()
+        }
+    }
+    
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = Secondary),
@@ -291,12 +354,51 @@ private fun BluetoothTabContent(
                     }
                 } else {
                     Button(
-                        onClick = onScanClick,
+                        onClick = {
+                            if (hasBluetoothPermission && hasScanPermission) {
+                                onScanClick()
+                            } else {
+                                permissionLauncher.launch(
+                                    arrayOf(
+                                        Manifest.permission.BLUETOOTH_CONNECT,
+                                        Manifest.permission.BLUETOOTH_SCAN,
+                                        Manifest.permission.ACCESS_FINE_LOCATION
+                                    )
+                                )
+                            }
+                        },
                         colors = ButtonDefaults.buttonColors(containerColor = Accent)
                     ) {
                         Icon(Icons.Default.Radar, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(4.dp))
                         Text("扫描")
+                    }
+                }
+            }
+            
+            // 无权限提示
+            if (!hasBluetoothPermission || !hasScanPermission || !hasLocationPermission) {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = Error.copy(alpha = 0.1f))
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Default.BluetoothDisabled,
+                            contentDescription = null,
+                            tint = Error,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            "需要蓝牙权限才能扫描设备",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Error
+                        )
                     }
                 }
             }
@@ -349,7 +451,30 @@ private fun BluetoothTabContent(
             }
             
             // 设备列表
-            if (uiState.scannedDevices.isEmpty() && !uiState.isScanning) {
+            if (!hasBluetoothPermission || !hasScanPermission || !hasLocationPermission) {
+                // 无权限时显示提示
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(100.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(
+                            Icons.Default.BluetoothDisabled,
+                            contentDescription = null,
+                            tint = TextSecondary,
+                            modifier = Modifier.size(32.dp)
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            "请点击上方「扫描」按钮授权",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = TextSecondary
+                        )
+                    }
+                }
+            } else if (uiState.scannedDevices.isEmpty() && !uiState.isScanning) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -372,38 +497,49 @@ private fun BluetoothTabContent(
                     }
                 }
             } else {
-                // 已配对设备
-                val pairedDevices = uiState.scannedDevices.filter { it.isPaired }
-                val unpairedDevices = uiState.scannedDevices.filter { !it.isPaired }
-                
-                if (pairedDevices.isNotEmpty()) {
-                    Text(
-                        "已配对设备",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = TextSecondary
-                    )
-                    pairedDevices.forEach { device ->
-                        BluetoothDeviceButton(
-                            device = device,
-                            isConnecting = uiState.isConnecting,
-                            onClick = { onDeviceClick(device) }
-                        )
+                // 设备列表（可滚动）
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 320.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    val pairedDevices = uiState.scannedDevices.filter { it.isPaired }
+                    val unpairedDevices = uiState.scannedDevices.filter { !it.isPaired }
+                    
+                    if (pairedDevices.isNotEmpty()) {
+                        item {
+                            Text(
+                                "已配对设备 (${pairedDevices.size})",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = TextSecondary
+                            )
+                        }
+                        items(pairedDevices) { device ->
+                            BluetoothDeviceButton(
+                                device = device,
+                                isConnecting = uiState.isConnecting,
+                                onClick = { onDeviceClick(device) }
+                            )
+                        }
                     }
-                }
-                
-                if (unpairedDevices.isNotEmpty()) {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        "附近设备",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = TextSecondary
-                    )
-                    unpairedDevices.forEach { device ->
-                        BluetoothDeviceButton(
-                            device = device,
-                            isConnecting = uiState.isConnecting,
-                            onClick = { onDeviceClick(device) }
-                        )
+                    
+                    if (unpairedDevices.isNotEmpty()) {
+                        item { Spacer(modifier = Modifier.height(4.dp)) }
+                        item {
+                            Text(
+                                "可用设备 (${unpairedDevices.size})",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = TextSecondary
+                            )
+                        }
+                        items(unpairedDevices) { device ->
+                            BluetoothDeviceButton(
+                                device = device,
+                                isConnecting = uiState.isConnecting,
+                                onClick = { onDeviceClick(device) }
+                            )
+                        }
                     }
                 }
             }
@@ -415,6 +551,7 @@ private fun BluetoothTabContent(
 private fun BluetoothDeviceButton(
     device: ScannedBluetoothDevice,
     isConnecting: Boolean,
+    isThisDeviceConnecting: Boolean = false,
     onClick: () -> Unit
 ) {
     OutlinedButton(
@@ -423,11 +560,19 @@ private fun BluetoothDeviceButton(
         enabled = !isConnecting,
         shape = RoundedCornerShape(12.dp)
     ) {
-        Icon(
-            Icons.Default.Bluetooth, 
-            contentDescription = null, 
-            tint = if (device.isPaired) Accent else TextSecondary
-        )
+        if (isThisDeviceConnecting) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(18.dp),
+                strokeWidth = 2.dp,
+                color = TextSecondary
+            )
+        } else {
+            Icon(
+                Icons.Default.Bluetooth, 
+                contentDescription = null, 
+                tint = if (device.isPaired) Accent else TextSecondary
+            )
+        }
         Spacer(modifier = Modifier.width(8.dp))
         Text(
             text = if (device.isPaired) device.name else "${device.name} (未配对)",
@@ -448,6 +593,7 @@ private fun BluetoothDeviceButton(
 private fun ConnectedInfo(
     connectionType: String,
     address: String,
+    firmwareVersion: String,
     onDisconnect: () -> Unit
 ) {
     Card(
@@ -471,6 +617,16 @@ private fun ConnectedInfo(
                     text = "$connectionType: $address",
                     style = MaterialTheme.typography.titleMedium,
                     color = TextPrimary,
+                    fontFamily = FontFamily.Monospace
+                )
+            }
+            
+            if (firmwareVersion.isNotBlank()) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "固件: $firmwareVersion",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Accent.copy(alpha = 0.8f),
                     fontFamily = FontFamily.Monospace
                 )
             }

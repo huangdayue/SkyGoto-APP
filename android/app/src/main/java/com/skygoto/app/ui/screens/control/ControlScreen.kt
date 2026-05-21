@@ -5,21 +5,28 @@ package com.skygoto.app.ui.screens.control
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import com.skygoto.app.domain.model.Direction
 import com.skygoto.app.domain.model.MoveRate
 import com.skygoto.app.ui.theme.*
@@ -29,12 +36,38 @@ fun ControlScreen(
     viewModel: ControlViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val scrollState = rememberScrollState()
+    
+    // 生命周期感知：只在控制页面可见时轮询
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_RESUME -> {
+                    // 用户进入控制页面且已连接 → 开始轮询
+                    if (uiState.isConnected) {
+                        viewModel.startPollingWhenVisible()
+                    }
+                }
+                Lifecycle.Event.ON_PAUSE -> {
+                    // 用户离开控制页面 → 停止轮询
+                    viewModel.stopPollingWhenHidden()
+                }
+                else -> {}
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
     
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(Primary)
             .padding(16.dp)
+            .verticalScroll(scrollState)
     ) {
         // 连接状态栏
         ConnectionStatusBar(isConnected = uiState.isConnected)
@@ -71,26 +104,26 @@ fun ControlScreen(
         DPadControl(
             onDirectionPressed = viewModel::move,
             onDirectionReleased = viewModel::stopMove,
-            onStopPressed = viewModel::stopMove
-        )
-        
-        Spacer(modifier = Modifier.height(16.dp))
-        
-        // 零位控制
-        ZeroPositionControls(
+            onStopPressed = viewModel::stopMove,
             onHome = viewModel::home,
             onSetZero = viewModel::setZeroPosition
         )
-        
-        Spacer(modifier = Modifier.height(16.dp))
-        
-        // GOTO 结果
-        uiState.gotoResult?.let { result ->
-            GotoResultBanner(
-                result = result,
-                onDismiss = viewModel::clearGotoResult
-            )
-        }
+    }
+
+    // GOTO 结果
+    uiState.gotoResult?.let { result ->
+        GotoResultBanner(
+            result = result,
+            onDismiss = viewModel::clearGotoResult
+        )
+    }
+
+    // 错误/失败/断开连接等统一提示
+    uiState.result?.let { result ->
+        GotoResultBanner(
+            result = result,
+            onDismiss = viewModel::clearGotoResult
+        )
     }
 }
 
@@ -136,26 +169,34 @@ private fun CoordinatesDisplay(
                 style = MaterialTheme.typography.labelMedium,
                 color = TextSecondary
             )
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(12.dp))
+            // 第一行：RA 和 Dec
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceEvenly
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text("RA", style = MaterialTheme.typography.labelSmall, color = Accent)
-                    Text(ra, fontFamily = FontFamily.Monospace, fontSize = 20.sp, color = TextPrimary)
+                    Text(ra, fontFamily = FontFamily.Monospace, fontSize = 18.sp, color = TextPrimary)
                 }
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text("Dec", style = MaterialTheme.typography.labelSmall, color = Accent)
-                    Text(dec, fontFamily = FontFamily.Monospace, fontSize = 20.sp, color = TextPrimary)
+                    Text(dec, fontFamily = FontFamily.Monospace, fontSize = 18.sp, color = TextPrimary)
                 }
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            // 第二行：Alt 和 Az
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly
+            ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text("Alt", style = MaterialTheme.typography.labelSmall, color = Accent)
-                    Text(alt, fontFamily = FontFamily.Monospace, fontSize = 20.sp, color = TextPrimary)
+                    Text(alt, fontFamily = FontFamily.Monospace, fontSize = 18.sp, color = TextPrimary)
                 }
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text("Az", style = MaterialTheme.typography.labelSmall, color = Accent)
-                    Text(az, fontFamily = FontFamily.Monospace, fontSize = 20.sp, color = TextPrimary)
+                    Text(az, fontFamily = FontFamily.Monospace, fontSize = 18.sp, color = TextPrimary)
                 }
             }
         }
@@ -190,20 +231,38 @@ private fun RateSelector(
     selectedRate: MoveRate,
     onRateSelected: (MoveRate) -> Unit
 ) {
+    var expanded by remember { mutableStateOf(false) }
+    
     Column {
         Text("移动速率", style = MaterialTheme.typography.labelMedium, color = TextSecondary)
         Spacer(modifier = Modifier.height(8.dp))
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ExposedDropdownMenuBox(
+            expanded = expanded,
+            onExpandedChange = { expanded = !expanded }
         ) {
-            MoveRate.entries.take(4).forEach { rate ->
-                FilterChip(
-                    selected = rate == selectedRate,
-                    onClick = { onRateSelected(rate) },
-                    label = { Text(rate.displayName, fontSize = 10.sp) },
-                    modifier = Modifier.weight(1f)
-                )
+            OutlinedTextField(
+                value = selectedRate.displayName,
+                onValueChange = {},
+                readOnly = true,
+                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                modifier = Modifier
+                    .menuAnchor()
+                    .fillMaxWidth(),
+                colors = OutlinedTextFieldDefaults.colors()
+            )
+            ExposedDropdownMenu(
+                expanded = expanded,
+                onDismissRequest = { expanded = false }
+            ) {
+                MoveRate.entries.forEach { rate ->
+                    DropdownMenuItem(
+                        text = { Text(rate.displayName) },
+                        onClick = {
+                            onRateSelected(rate)
+                            expanded = false
+                        }
+                    )
+                }
             }
         }
     }
@@ -213,57 +272,94 @@ private fun RateSelector(
 private fun DPadControl(
     onDirectionPressed: (Direction) -> Unit,
     onDirectionReleased: () -> Unit,
-    onStopPressed: () -> Unit
+    onStopPressed: () -> Unit,
+    onHome: () -> Unit,
+    onSetZero: () -> Unit
 ) {
-    Box(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .aspectRatio(1f),
-        contentAlignment = Alignment.Center
+            .padding(vertical = 16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        // 中心停止按钮
-        StopButton(
-            modifier = Modifier.align(Alignment.Center),
-            onPressed = onStopPressed
-        )
+        // 上排：零 | N | 置
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // 零位按钮（椭圆胶囊形，稍大）
+            Button(
+                onClick = onHome,
+                modifier = Modifier.height(44.dp).width(90.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Secondary,
+                    contentColor = TextPrimary
+                ),
+                shape = RoundedCornerShape(22.dp)
+            ) {
+                Icon(Icons.Default.Home, contentDescription = null, modifier = Modifier.size(14.dp))
+                Spacer(modifier = Modifier.width(3.dp))
+                Text("零位", fontSize = 12.sp, fontWeight = FontWeight.Medium)
+            }
+            
+            // N按钮
+            DirectionButton(
+                direction = Direction.NORTH,
+                onPressed = { onDirectionPressed(Direction.NORTH) },
+                onReleased = onDirectionReleased
+            )
+            
+            // 置为零位按钮（椭圆胶囊形）
+            Button(
+                onClick = onSetZero,
+                modifier = Modifier.height(44.dp).width(90.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Secondary,
+                    contentColor = TextPrimary
+                ),
+                shape = RoundedCornerShape(22.dp)
+            ) {
+                Icon(Icons.Default.AddLocation, contentDescription = null, modifier = Modifier.size(14.dp))
+                Spacer(modifier = Modifier.width(3.dp))
+                Text("置为零位", fontSize = 12.sp, fontWeight = FontWeight.Medium)
+            }
+        }
         
-        // 北
-        DirectionButton(
-            direction = Direction.NORTH,
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .offset(y = 40.dp),
-            onPressed = { onDirectionPressed(Direction.NORTH) },
-            onReleased = onDirectionReleased
-        )
+        Spacer(modifier = Modifier.height(20.dp))
         
-        // 南
+        // 中间行：W   STOP   E
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // W按钮
+            DirectionButton(
+                direction = Direction.WEST,
+                onPressed = { onDirectionPressed(Direction.WEST) },
+                onReleased = onDirectionReleased
+            )
+            
+            // STOP按钮
+            StopButton(
+                onPressed = onStopPressed
+            )
+            
+            // E按钮
+            DirectionButton(
+                direction = Direction.EAST,
+                onPressed = { onDirectionPressed(Direction.EAST) },
+                onReleased = onDirectionReleased
+            )
+        }
+        
+        Spacer(modifier = Modifier.height(20.dp))
+        
+        // S按钮（居中）
         DirectionButton(
             direction = Direction.SOUTH,
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .offset(y = (-40).dp),
             onPressed = { onDirectionPressed(Direction.SOUTH) },
-            onReleased = onDirectionReleased
-        )
-        
-        // 西
-        DirectionButton(
-            direction = Direction.WEST,
-            modifier = Modifier
-                .align(Alignment.CenterStart)
-                .offset(x = 40.dp),
-            onPressed = { onDirectionPressed(Direction.WEST) },
-            onReleased = onDirectionReleased
-        )
-        
-        // 东
-        DirectionButton(
-            direction = Direction.EAST,
-            modifier = Modifier
-                .align(Alignment.CenterEnd)
-                .offset(x = (-40).dp),
-            onPressed = { onDirectionPressed(Direction.EAST) },
             onReleased = onDirectionReleased
         )
     }
@@ -373,15 +469,21 @@ private fun DirectionButton(
     }
 }
 
+
 @Composable
 private fun GotoResultBanner(
     result: String,
     onDismiss: () -> Unit
 ) {
+    LaunchedEffect(result) {
+        delay(3000L)
+        onDismiss()
+    }
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
-            containerColor = if (result.startsWith("错误") || result.startsWith("回零位失败") || result.startsWith("设零位失败")) Error.copy(alpha = 0.3f) else Accent.copy(alpha = 0.3f)
+            containerColor = if (result.contains("失败") || result.contains("错误") || result.contains("断开")) Error.copy(alpha = 0.3f) else Accent.copy(alpha = 0.3f)
         )
     ) {
         Row(

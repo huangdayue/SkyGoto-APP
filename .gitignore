@@ -1,25 +1,38 @@
-# Gradle
-.gradle/
-build/
-*.class
-
-# Android Studio
-*.iml
-.local
-captures/
-
-# Build outputs
+# === Android ===
 *.apk
 *.aab
 *.ap_
 *.dex
-
-# Debug
-*.log
-
-# Local config (contains API keys etc)
+build/
+.gradle/
+.idea/
+*.iml
 local.properties
+captures/
 
-# OS
+# === Gradle Wrapper ===
+gradle/wrapper/gradle-*.zip
+
+# === Large Binary Assets ===
+# JPL DE421 ephemeris (~17MB) - download from NASA JPL instead
+de421.bsp
+# Chaquopy prebuilt wheels (~18MB) - use PyPI instead
+skyfield-wheels/
+# Chaquopy libs (~94MB) - use pip/PyPI instead
+libs/
+test_skyfield.py
+
+# === Python ===
+__pycache__/
+*.pyc
+*.pyd
+venv/
+.venv/
+
+# === OS ===
 .DS_Store
 Thumbs.db
+
+# === Logs ===
+*.log
+logs/

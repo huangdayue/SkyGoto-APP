@@ -2,7 +2,6 @@ package com.skygoto.app.ui.screens.connect
 
 import android.annotation.SuppressLint
 import android.bluetooth.BluetoothDevice
-import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.skygoto.app.data.datasource.BluetoothConnectionManager
@@ -11,12 +10,13 @@ import com.skygoto.app.data.protocol.LX200Protocol
 import com.skygoto.app.data.protocol.ProtocolConnection
 import com.skygoto.app.data.repository.MountRepositoryImpl
 import com.skygoto.app.domain.repository.ConnectionManager
+import com.skygoto.app.util.AppLogger
 import dagger.hilt.android.lifecycle.HiltViewModel
-import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
-import java.io.IOException
 import javax.inject.Inject
+
+private const val TAG = "ConnectViewModel"
 
 data class ConnectUiState(
     val host: String = "192.168.1.1",
@@ -26,15 +26,27 @@ data class ConnectUiState(
     val pairedDevices: List<Pair<String, String>> = emptyList(), // name, address
     val isWifiConnection: Boolean = true,
     val deviceName: String = "",
+    val firmwareVersion: String = "",
     val isScanning: Boolean = false,
-    val scannedDevices: List<ScannedBluetoothDevice> = emptyList()
+    val scannedDevices: List<ScannedBluetoothDevice> = emptyList(),
+    val showConnectedToast: Boolean = false
 )
 
+/**
+ * 连接页面 ViewModel
+ *
+ * 修复说明：
+ * - 蓝牙连接管理器(BluetoothConnectionManager)现在通过 Hilt 注入单例，
+ *   不再自己 new 出实例，避免资源泄漏（广播接收器、扫描超时 Runnable）
+ * - ConnectionManager 也通过构造函数注入同一个 BluetoothConnectionManager 单例
+ * - 断开连接时，统一通过 connectionManager.disconnect() 关闭资源
+ * - ViewModel.onCleared() 不再 close() bluetoothManager，因为它是应用级单例
+ */
 @HiltViewModel
 class ConnectViewModel @Inject constructor(
+    private val bluetoothManager: BluetoothConnectionManager,
     private val connectionManager: ConnectionManager,
-    private val mountRepository: MountRepositoryImpl,
-    @ApplicationContext private val context: Context
+    private val mountRepository: MountRepositoryImpl
 ) : ViewModel() {
     
     private val _uiState = MutableStateFlow(ConnectUiState())
@@ -45,8 +57,6 @@ class ConnectViewModel @Inject constructor(
     
     private val _connectionType = MutableStateFlow(ConnectionTabType.WIFI)
     val connectionType: StateFlow<ConnectionTabType> = _connectionType.asStateFlow()
-    
-    private var bluetoothManager: BluetoothConnectionManager? = null
     
     init {
         // 观察连接状态
@@ -71,30 +81,30 @@ class ConnectViewModel @Inject constructor(
             }
         }
         
-        // 初始化蓝牙管理器
+        // 初始化蓝牙管理器（使用 Hilt 注入的单例，统一管理资源）
         initBluetooth()
     }
     
     @SuppressLint("MissingPermission")
     private fun initBluetooth() {
-        bluetoothManager = BluetoothConnectionManager(context)
         refreshBluetoothDevices()
         
         // 观察扫描状态和设备列表
         viewModelScope.launch {
-            bluetoothManager?.isScanning?.collect { scanning ->
+            bluetoothManager.isScanning.collect { scanning ->
                 _uiState.update { it.copy(isScanning = scanning) }
             }
         }
         
         viewModelScope.launch {
-            bluetoothManager?.scannedDevices?.collect { devices ->
+            bluetoothManager.scannedDevices.collect { devices ->
                 _uiState.update { it.copy(scannedDevices = devices) }
             }
         }
     }
     
     fun selectConnectionType(type: ConnectionTabType) {
+        AppLogger.i("UserAction", "切换连接方式: ${type.name}")
         _connectionType.value = type
         _uiState.update { it.copy(isWifiConnection = type == ConnectionTabType.WIFI) }
     }
@@ -108,9 +118,9 @@ class ConnectViewModel @Inject constructor(
     }
     
     fun refreshBluetoothDevices() {
-        val devices = bluetoothManager?.getPairedDevices()?.map { device ->
+        val devices = bluetoothManager.getPairedDevices().map { device ->
             (device.name ?: "Unknown") to device.address
-        } ?: emptyList()
+        }
         _uiState.update { it.copy(pairedDevices = devices) }
     }
     
@@ -118,14 +128,14 @@ class ConnectViewModel @Inject constructor(
      * 开始蓝牙扫描
      */
     fun startBluetoothScan() {
-        bluetoothManager?.startScan()
+        bluetoothManager.startScan()
     }
     
     /**
      * 停止蓝牙扫描
      */
     fun stopBluetoothScan() {
-        bluetoothManager?.stopScan()
+        bluetoothManager.stopScan()
     }
     
     /**
@@ -133,11 +143,14 @@ class ConnectViewModel @Inject constructor(
      */
     fun connectToScannedDevice(device: ScannedBluetoothDevice) {
         viewModelScope.launch {
+            AppLogger.d(TAG, "Connecting to device: ${device.name} (${device.address})")
             _uiState.update { it.copy(isConnecting = true, error = null) }
             
-            val result = bluetoothManager?.connectByAddress(device.address)
+            val result = bluetoothManager.connectByAddress(device.address)
             
-            result?.fold(
+            AppLogger.d(TAG, "connectByAddress result: $result")
+            
+            result.fold(
                 onSuccess = { connection ->
                     // 验证连接：发送 :GVP# 获取版本信息
                     val protocol = LX200Protocol(connection)
@@ -146,19 +159,24 @@ class ConnectViewModel @Inject constructor(
                     versionResult.fold(
                         onSuccess = { version ->
                             mountRepository.setConnection(connection)
+                            _isConnected.value = true
                             _uiState.update { 
                                 it.copy(
                                     isConnecting = false,
-                                    deviceName = "${device.name} ($version)",
-                                    isWifiConnection = false
+                                    deviceName = device.name,
+                                    firmwareVersion = version.trim(),
+                                    isWifiConnection = false,
+                                    showConnectedToast = true
                                 ) 
                             }
+                            AppLogger.d(TAG, "Bluetooth connected successfully. Firmware: ${version.trim()}")
                         },
                         onFailure = { e ->
                             connection.close()
                             _uiState.update { 
                                 it.copy(isConnecting = false, error = "连接验证失败: ${e.message}") 
                             }
+                            AppLogger.e(TAG, "GVP command failed", e)
                         }
                     )
                 },
@@ -166,34 +184,44 @@ class ConnectViewModel @Inject constructor(
                     _uiState.update { 
                         it.copy(isConnecting = false, error = e.message ?: "蓝牙连接失败") 
                     }
+                    AppLogger.e(TAG, "Bluetooth connect failed", e)
                 }
-            ) ?: _uiState.update { 
-                it.copy(isConnecting = false, error = "蓝牙连接不可用") 
+            ) ?: run {
+                _uiState.update { it.copy(isConnecting = false, error = "蓝牙连接不可用") }
             }
         }
     }
     
     fun connectWifi() {
+        val host = _uiState.value.host
+        val port = _uiState.value.port
+        AppLogger.i("UserAction", "WiFi连接尝试: $host:$port")
         viewModelScope.launch {
             _uiState.update { it.copy(isConnecting = true, error = null) }
             
-            val host = _uiState.value.host
-            val port = _uiState.value.port.toIntOrNull() ?: 9999
-            
-            val result = connectionManager.connectWiFi(host, port)
+            val result = connectionManager.connectWiFi(host, port.toIntOrNull() ?: 9999)
             
             result.fold(
                 onSuccess = { connection ->
+                    AppLogger.i("UserAction", "WiFi连接成功: $host:$port")
                     mountRepository.setConnection(connection)
+                    // 获取固件版本
+                    val protocol = LX200Protocol(connection)
+                    val versionResult = protocol.sendCommand(":GVN#")
+                    protocol.close()
+                    val versionStr = versionResult.getOrNull()?.trim() ?: "未知"
                     _uiState.update { 
                         it.copy(
                             isConnecting = false, 
                             deviceName = "$host:$port",
-                            isWifiConnection = true
+                            firmwareVersion = versionStr,
+                            isWifiConnection = true,
+                            showConnectedToast = true
                         ) 
                     }
                 },
                 onFailure = { e ->
+                    AppLogger.e("UserAction", "WiFi连接失败: ${e.message}", e)
                     _uiState.update { 
                         it.copy(isConnecting = false, error = e.message ?: "连接失败") 
                     }
@@ -202,56 +230,90 @@ class ConnectViewModel @Inject constructor(
         }
     }
     
+    /**
+     * 连接到配对的蓝牙设备（通过设备列表选择）
+     */
+    @SuppressLint("MissingPermission")
     fun connectBluetooth(deviceName: String, deviceAddress: String) {
         viewModelScope.launch {
+            AppLogger.d(TAG, "connectBluetooth called: $deviceName ($deviceAddress)")
             _uiState.update { it.copy(isConnecting = true, error = null) }
             
             val device = getBluetoothDevice(deviceAddress)
             if (device == null) {
+                AppLogger.e(TAG, "Device not found: $deviceAddress")
                 _uiState.update { it.copy(isConnecting = false, error = "未找到蓝牙设备") }
                 return@launch
             }
             
-            val result = bluetoothManager?.connect(device)
+            val result = bluetoothManager.connect(device)
             
-            result?.fold(
+            result.fold(
                 onSuccess = { connection ->
-                    mountRepository.setConnection(connection)
-                    _uiState.update { 
-                        it.copy(
-                            isConnecting = false,
-                            deviceName = deviceName,
-                            isWifiConnection = false
-                        ) 
-                    }
+                    AppLogger.d(TAG, "Bluetooth connection established, verifying with :GVP#")
+                    // 验证连接：发送 :GVP# 获取版本信息
+                    val protocol = LX200Protocol(connection)
+                    val versionResult = protocol.sendCommand(":GVP#")
+                    
+                    versionResult.fold(
+                        onSuccess = { version ->
+                            AppLogger.d(TAG, "GVP response: $version")
+                            mountRepository.setConnection(connection)
+                            _isConnected.value = true
+                            _uiState.update { 
+                                it.copy(
+                                    isConnecting = false,
+                                    deviceName = deviceName,
+                                    firmwareVersion = version.trim(),
+                                    isWifiConnection = false,
+                                    showConnectedToast = true
+                                ) 
+                            }
+                        },
+                        onFailure = { e ->
+                            AppLogger.e(TAG, "GVP command failed", e)
+                            connection.close()
+                            _uiState.update { 
+                                it.copy(isConnecting = false, error = "连接验证失败: ${e.message}") 
+                            }
+                        }
+                    )
                 },
                 onFailure = { e ->
+                    AppLogger.e(TAG, "Bluetooth connect failed", e)
                     _uiState.update { 
                         it.copy(isConnecting = false, error = e.message ?: "蓝牙连接失败") 
                     }
                 }
-            ) ?: _uiState.update { 
-                it.copy(isConnecting = false, error = "蓝牙连接不可用") 
+            ) ?: run {
+                _uiState.update { it.copy(isConnecting = false, error = "蓝牙连接不可用") }
             }
         }
     }
     
     @SuppressLint("MissingPermission")
     private fun getBluetoothDevice(address: String): BluetoothDevice? {
-        return bluetoothManager?.getPairedDevices()?.find { it.address == address }
+        return bluetoothManager.getPairedDevices().find { it.address == address }
+    }
+    
+    fun clearConnectedToast() {
+        _uiState.update { it.copy(showConnectedToast = false) }
     }
     
     fun disconnect() {
+        AppLogger.i("UserAction", "断开连接")
         viewModelScope.launch {
             connectionManager.disconnect()
             mountRepository.clearConnection()
             _isConnected.value = false
-            _uiState.update { it.copy(deviceName = "") }
+            _uiState.update { it.copy(deviceName = "", firmwareVersion = "", showConnectedToast = false) }
         }
     }
     
     override fun onCleared() {
         super.onCleared()
-        bluetoothManager?.close()
+        // 注意：不再在这里 close() bluetoothManager
+        // 因为它是 Hilt 单例，由 Hilt 统一管理生命周期
+        // close() 会注销广播接收器和停止扫描，影响其他页面使用
     }
 }
