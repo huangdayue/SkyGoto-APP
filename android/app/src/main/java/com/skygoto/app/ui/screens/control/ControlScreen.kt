@@ -14,7 +14,6 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
-import kotlinx.coroutines.delay
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -29,6 +28,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.skygoto.app.domain.model.Direction
 import com.skygoto.app.domain.model.MoveRate
+import com.skygoto.app.ui.components.ResultBanner
 import com.skygoto.app.ui.theme.*
 
 @Composable
@@ -111,17 +111,17 @@ fun ControlScreen(
     }
 
     // GOTO 结果
-    uiState.gotoResult?.let { result ->
-        GotoResultBanner(
-            result = result,
+    uiState.gotoResult?.let { config ->
+        ResultBanner(
+            config = config,
             onDismiss = viewModel::clearGotoResult
         )
     }
 
     // 错误/失败/断开连接等统一提示
-    uiState.result?.let { result ->
-        GotoResultBanner(
-            result = result,
+    uiState.result?.let { config ->
+        ResultBanner(
+            config = config,
             onDismiss = viewModel::clearGotoResult
         )
     }
@@ -465,83 +465,6 @@ private fun DirectionButton(
                 color = Primary, 
                 fontWeight = FontWeight.Bold
             )
-        }
-    }
-}
-
-
-@Composable
-private fun GotoResultBanner(
-    result: String,
-    onDismiss: () -> Unit
-) {
-    LaunchedEffect(result) {
-        delay(3000L)
-        onDismiss()
-    }
-
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = if (result.contains("失败") || result.contains("错误") || result.contains("断开")) Error.copy(alpha = 0.3f) else Accent.copy(alpha = 0.3f)
-        )
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(result, color = TextPrimary)
-            IconButton(onClick = onDismiss) {
-                Icon(Icons.Default.Close, contentDescription = "关闭", tint = TextSecondary)
-            }
-        }
-    }
-}
-
-@Composable
-private fun ZeroPositionControls(
-    onHome: () -> Unit,
-    onSetZero: () -> Unit
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        // 回零位按钮
-        Button(
-            onClick = onHome,
-            modifier = Modifier.weight(1f),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = Secondary
-            )
-        ) {
-            Icon(
-                Icons.Default.Home,
-                contentDescription = null,
-                modifier = Modifier.size(20.dp)
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Text("回零位", color = TextPrimary)
-        }
-        
-        // 设为零位按钮
-        Button(
-            onClick = onSetZero,
-            modifier = Modifier.weight(1f),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = Secondary
-            )
-        ) {
-            Icon(
-                Icons.Default.AddLocation,
-                contentDescription = null,
-                modifier = Modifier.size(20.dp)
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Text("设为零位", color = TextPrimary)
         }
     }
 }

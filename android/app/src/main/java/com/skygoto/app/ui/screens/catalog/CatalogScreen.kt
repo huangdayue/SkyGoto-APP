@@ -19,12 +19,12 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogProperties
-import kotlinx.coroutines.delay
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.skygoto.app.domain.model.CelestialObject
 import com.skygoto.app.domain.model.ObjectType
 import com.skygoto.app.domain.repository.CatalogType
+import com.skygoto.app.ui.components.ResultBanner
 import com.skygoto.app.ui.theme.*
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -127,9 +127,9 @@ fun CatalogScreen(
     }
     
     // GOTO 结果 Banner（失败/成功提示，弹窗关闭后显示）
-    uiState.gotoResult?.let { result ->
-        GotoResultBanner(
-            result = result,
+    uiState.gotoResult?.let { config ->
+        ResultBanner(
+            config = config,
             onDismiss = { viewModel.clearGotoResult() }
         )
     }
@@ -505,35 +505,4 @@ private fun GotoProgressDialog(
         titleContentColor = Accent,
         textContentColor = TextPrimary
     )
-}
-
-@Composable
-private fun GotoResultBanner(
-    result: String,
-    onDismiss: () -> Unit
-) {
-    LaunchedEffect(result) {
-        delay(3000L)
-        onDismiss()
-    }
-
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = if (result.contains("失败") || result.contains("错误") || result.contains("断开")) Error.copy(alpha = 0.3f) else Accent.copy(alpha = 0.3f)
-        )
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(result, color = TextPrimary)
-            IconButton(onClick = onDismiss) {
-                Icon(Icons.Default.Close, contentDescription = "关闭", tint = TextSecondary)
-            }
-        }
-    }
 }

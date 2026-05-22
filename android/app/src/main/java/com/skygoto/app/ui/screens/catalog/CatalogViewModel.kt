@@ -11,6 +11,8 @@ import com.skygoto.app.domain.repository.CatalogRepository
 import com.skygoto.app.domain.repository.CatalogType
 import com.skygoto.app.domain.repository.MountRepository
 import com.skygoto.app.util.AppLogger
+import com.skygoto.app.ui.components.ResultBannerConfig
+import com.skygoto.app.ui.components.ResultLevel
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -27,7 +29,7 @@ data class CatalogUiState(
     val selectedObject: CelestialObject? = null,
     val isLoading: Boolean = false,
     val isGotoInProgress: Boolean = false,
-    val gotoResult: String? = null,
+    val gotoResult: ResultBannerConfig? = null,
     val lastGotoObject: CelestialObject? = null,
     val gotoProgressInfo: GotoProgressInfo? = null,
     val cachedMountLat: Double = 0.0,
@@ -146,7 +148,7 @@ class CatalogViewModel @Inject constructor(
             
             val isConnected = mountRepository.isConnected.value
             if (!isConnected) {
-                _uiState.update { it.copy(isGotoInProgress = false, gotoResult = "赤道仪未连接") }
+                _uiState.update { it.copy(isGotoInProgress = false, gotoResult = ResultBannerConfig.error("赤道仪未连接")) }
                 return@launch
             }
             
@@ -195,6 +197,7 @@ class CatalogViewModel @Inject constructor(
                                 it.copy(
                                     isGotoInProgress = false,
                                     lastGotoObject = obj,
+                                    gotoResult = ResultBannerConfig.success("✓ ${obj.id} GOTO 执行成功"),
                                     gotoProgressInfo = GotoProgressInfo(
                                         targetRa = targetRa,
                                         targetDec = targetDec,
@@ -210,7 +213,7 @@ class CatalogViewModel @Inject constructor(
                         is com.skygoto.app.domain.model.GotoError -> {
                             AppLogger.w(TAG, "[GOTO进度] GotoError: ${gotoResult.message}")
                             dismissGotoProgress()
-                            _uiState.update { it.copy(isGotoInProgress = false, lastGotoObject = obj, gotoResult = "GOTO 失败: ${gotoResult.message}") }
+                            _uiState.update { it.copy(isGotoInProgress = false, lastGotoObject = obj, gotoResult = ResultBannerConfig.error("GOTO 失败: ${gotoResult.message}")) }
                         }
                     }
                 },
@@ -218,7 +221,7 @@ class CatalogViewModel @Inject constructor(
                     AppLogger.e(TAG, "GOTO exception: ${e.message}", e)
                     AppLogger.w(TAG, "[GOTO进度] GOTO 异常: ${e.message}")
                     dismissGotoProgress()
-                    _uiState.update { it.copy(isGotoInProgress = false, gotoResult = "GOTO 异常: ${e.message}") }
+                    _uiState.update { it.copy(isGotoInProgress = false, gotoResult = ResultBannerConfig.error("GOTO 异常: ${e.message}")) }
                 }
             )
         }

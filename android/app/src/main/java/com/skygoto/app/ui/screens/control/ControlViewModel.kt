@@ -8,6 +8,7 @@ import com.skygoto.app.domain.model.GotoResult
 import com.skygoto.app.domain.model.MountStatus
 import com.skygoto.app.domain.model.MoveRate
 import com.skygoto.app.domain.repository.MountRepository
+import com.skygoto.app.ui.components.ResultBannerConfig
 import com.skygoto.app.util.AppLogger
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
@@ -19,8 +20,8 @@ data class ControlUiState(
     val mountStatus: MountStatus = MountStatus(),
     val selectedRate: MoveRate = MoveRate.GUIDE,
     val isGotoInProgress: Boolean = false,
-    val gotoResult: String? = null,  // GOTO 成功/进行中的提示
-    val result: String? = null  // 统一结果提示（错误/失败/断开连接等）
+    val gotoResult: ResultBannerConfig? = null,  // GOTO 成功提示
+    val result: ResultBannerConfig? = null        // 错误/警告统一提示
 )
 
 @HiltViewModel
@@ -40,7 +41,7 @@ class ControlViewModel @Inject constructor(
             mountRepository.isConnected.collect { connected ->
                 // 检测连接断开（从 true 变为 false）
                 if (wasConnected && !connected) {
-                    _uiState.update { it.copy(result = "连接已断开，请重新连接") }
+                    _uiState.update { it.copy(result = ResultBannerConfig.error("连接已断开，请重新连接", duration = 0L)) }
                 }
                 wasConnected = connected
                 _uiState.update { it.copy(isConnected = connected) }
@@ -133,7 +134,7 @@ class ControlViewModel @Inject constructor(
         AppLogger.i("UserAction", "GOTO: RA=$ra, Dec=$dec")
         viewModelScope.launch {
             if (!_uiState.value.isConnected) {
-                _uiState.update { it.copy(isGotoInProgress = false, result = "GOTO失败: 未连接赤道仪") }
+                _uiState.update { it.copy(isGotoInProgress = false, result = ResultBannerConfig.error("GOTO失败: 未连接赤道仪")) }
                 return@launch
             }
             
@@ -144,17 +145,17 @@ class ControlViewModel @Inject constructor(
                     when (gotoResult) {
                         is GotoResult.Success -> {
                             AppLogger.i("UserAction", "GOTO 开始: RA=$ra, Dec=$dec")
-                            _uiState.update { it.copy(isGotoInProgress = false, gotoResult = "GOTO 已开始", result = null) }
+                            _uiState.update { it.copy(isGotoInProgress = false, gotoResult = ResultBannerConfig.success("GOTO 已开始"), result = null) }
                         }
                         is GotoError -> {
                             AppLogger.w("UserAction", "GOTO 错误: ${gotoResult.message}")
-                            _uiState.update { it.copy(isGotoInProgress = false, result = gotoResult.message) }
+                            _uiState.update { it.copy(isGotoInProgress = false, result = ResultBannerConfig.error(gotoResult.message)) }
                         }
                     }
                 },
                 onFailure = { e ->
                     AppLogger.e("UserAction", "GOTO 失败: ${e.message}", e)
-                    _uiState.update { it.copy(isGotoInProgress = false, result = "GOTO失败: ${e.message}") }
+                    _uiState.update { it.copy(isGotoInProgress = false, result = ResultBannerConfig.error("GOTO失败: ${e.message}")) }
                 }
             )
         }
@@ -164,7 +165,7 @@ class ControlViewModel @Inject constructor(
         AppLogger.i("UserAction", "取消 GOTO")
         viewModelScope.launch {
             mountRepository.cancelGoto()
-            _uiState.update { it.copy(isGotoInProgress = false, gotoResult = "GOTO 已取消") }
+            _uiState.update { it.copy(isGotoInProgress = false, gotoResult = ResultBannerConfig.success("GOTO 已取消")) }
         }
     }
     
@@ -197,7 +198,7 @@ class ControlViewModel @Inject constructor(
     
     private fun showActionResult(message: String) {
         AppLogger.w("UserAction", message)
-        _uiState.update { it.copy(result = message) }
+        _uiState.update { it.copy(result = ResultBannerConfig.error(message)) }
     }
     
     fun home() {
@@ -209,7 +210,7 @@ class ControlViewModel @Inject constructor(
             }
             val result = mountRepository.home()
             result.fold(
-                onSuccess = { _uiState.update { it.copy(gotoResult = "回零位完成") } },
+                onSuccess = { _uiState.update { it.copy(gotoResult = ResultBannerConfig.success("回零位完成")) } },
                 onFailure = { e -> showActionResult("回零位失败: ${e.message}") }
             )
         }
@@ -224,7 +225,7 @@ class ControlViewModel @Inject constructor(
             }
             val result = mountRepository.setZeroPosition()
             result.fold(
-                onSuccess = { _uiState.update { it.copy(gotoResult = "已设为零位") } },
+                onSuccess = { _uiState.update { it.copy(gotoResult = ResultBannerConfig.success("已设为零位")) } },
                 onFailure = { e -> showActionResult("置零位失败: ${e.message}") }
             )
         }
