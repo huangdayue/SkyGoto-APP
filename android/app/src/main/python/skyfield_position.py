@@ -9,6 +9,13 @@
 import os
 from datetime import datetime, timezone
 
+# Chaquopy's built-in CA bundle (same as certifi's cacert.pem but avoids import certifi)
+# This is used by skyfield's iokit.py for HTTPS downloads of IERS data
+_CHAQUOPY_CACERT = '/data/data/com.skygoto.app/files/chaquopy/cacert.pem'
+if os.path.exists(_CHAQUOPY_CACERT):
+    os.environ['SSL_CERT_FILE'] = _CHAQUOPY_CACERT
+    os.environ['SSL_CERT_DIR'] = '/data/data/com.skygoto.app/files/chaquopy'
+
 # Debug log file - use SAME file as AppLogger
 LOG_FILE = '/data/data/com.skygoto.app/files/logs/onstepx_app.log'
 

@@ -3,7 +3,6 @@ package com.skygoto.app.ui.screens.control
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.skygoto.app.domain.model.Direction
-import com.skygoto.app.domain.model.GotoError
 import com.skygoto.app.domain.model.GotoResult
 import com.skygoto.app.domain.model.MountStatus
 import com.skygoto.app.domain.model.MoveRate
@@ -147,7 +146,7 @@ class ControlViewModel @Inject constructor(
                             AppLogger.i("UserAction", "GOTO 开始: RA=$ra, Dec=$dec")
                             _uiState.update { it.copy(isGotoInProgress = false, gotoResult = ResultBannerConfig.success("GOTO 已开始"), result = null) }
                         }
-                        is GotoError -> {
+                        is GotoResult.GotoError -> {
                             AppLogger.w("UserAction", "GOTO 错误: ${gotoResult.message}")
                             _uiState.update { it.copy(isGotoInProgress = false, result = ResultBannerConfig.error(gotoResult.message)) }
                         }

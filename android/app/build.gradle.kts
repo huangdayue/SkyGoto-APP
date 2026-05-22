@@ -15,7 +15,7 @@ android {
         minSdk = 26
         targetSdk = 34
         versionCode = 1
-        versionName = "1.01"
+        versionName = "1.0.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -47,6 +47,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
     composeOptions {
         kotlinCompilerExtensionVersion = "1.5.4"
@@ -63,7 +64,7 @@ chaquopy {
     defaultConfig {
         version = "3.11"
         pip {
-            // 直接使用本地 wheel 文件（完整路径）
+            // 原始配置：仅本地 wheel，由 Chaquopy 自动下载其他依赖
             install("/home/node/.openclaw/workspace/OnStepX-APP/android/skyfield-wheels/jplephem-2.24-py3-none-any.whl")
             install("/home/node/.openclaw/workspace/OnStepX-APP/android/skyfield-wheels/skyfield-1.54-py3-none-any.whl")
             install("/home/node/.openclaw/workspace/OnStepX-APP/android/skyfield-wheels/pytz-2026.2-py2.py3-none-any.whl")

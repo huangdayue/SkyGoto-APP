@@ -28,6 +28,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.skygoto.app.BuildConfig
 import com.skygoto.app.data.datasource.ScannedBluetoothDevice
 import com.skygoto.app.ui.theme.*
 
@@ -123,7 +124,7 @@ fun ConnectScreen(
         
         // 版本信息
         Text(
-            text = "v1.0.0 | OnStepX 兼容",
+            text = "v${BuildConfig.VERSION_NAME} | OnStepX 兼容",
             style = MaterialTheme.typography.labelSmall,
             color = TextSecondary.copy(alpha = 0.5f)
         )
@@ -283,42 +284,40 @@ private fun BluetoothTabContent(
 ) {
     val context = LocalContext.current
     
-    // 权限状态
-    var hasBluetoothPermission by remember {
-        mutableStateOf(
-            ContextCompat.checkSelfPermission(
-                context,
-                Manifest.permission.BLUETOOTH_CONNECT
-            ) == PackageManager.PERMISSION_GRANTED
-        )
-    }
-    var hasScanPermission by remember {
-        mutableStateOf(
-            ContextCompat.checkSelfPermission(
-                context,
-                Manifest.permission.BLUETOOTH_SCAN
-            ) == PackageManager.PERMISSION_GRANTED
-        )
-    }
-    var hasLocationPermission by remember {
-        mutableStateOf(
-            ContextCompat.checkSelfPermission(
-                context,
-                Manifest.permission.ACCESS_FINE_LOCATION
-            ) == PackageManager.PERMISSION_GRANTED
-        )
-    }
+    // 权限状态：通过 permissionLauncher 回调更新，不再用 remember 固定初始值
+    var hasBluetoothPermission by remember { mutableStateOf(false) }
+    var hasScanPermission by remember { mutableStateOf(false) }
+    var hasLocationPermission by remember { mutableStateOf(false) }
     
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
-        hasBluetoothPermission = permissions[Manifest.permission.BLUETOOTH_CONNECT] == true
-        hasScanPermission = permissions[Manifest.permission.BLUETOOTH_SCAN] == true
-        hasLocationPermission = permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true
+        val bluetoothGranted = permissions[Manifest.permission.BLUETOOTH_CONNECT] == true
+        val scanGranted = permissions[Manifest.permission.BLUETOOTH_SCAN] == true
+        val locationGranted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true
+        hasBluetoothPermission = bluetoothGranted
+        hasScanPermission = scanGranted
+        hasLocationPermission = locationGranted
         // 权限授予后自动开始扫描
-        if (hasBluetoothPermission && hasScanPermission) {
+        if (bluetoothGranted && scanGranted) {
             onScanClick()
         }
+    }
+    
+    // 页面可见时重新检查权限状态
+    LaunchedEffect(Unit) {
+        hasBluetoothPermission = ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.BLUETOOTH_CONNECT
+        ) == PackageManager.PERMISSION_GRANTED
+        hasScanPermission = ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.BLUETOOTH_SCAN
+        ) == PackageManager.PERMISSION_GRANTED
+        hasLocationPermission = ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.ACCESS_FINE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
     }
     
     Card(

@@ -266,4 +266,173 @@ object SolarPositionCalculator {
         val s = (((absDec - d) * 60 - m) * 60)
         return "%s%02d*%02d:%02d".format(sign, d, m, (s * 100).toInt() / 100)
     }
+
+    // ========== 岁差修正 (IAU 2000A) ==========
+    /**
+     * 将 J2000 坐标修正为当前历元坐标（含岁差）
+     * @param raJ2000Str 赤经 J2000 字符串 ("HH:MM:SS")
+     * @param decJ2000Str 赤纬 J2000 字符串 ("+DD*MM:SS" 或 "-DD*MM:SS")
+     * @param jd 目标儒略日
+     * @return Pair<当前RA字符串, 当前Dec字符串>
+     */
+    fun applyPrecession(raJ2000Str: String, decJ2000Str: String, jd: Double): Pair<String, String> {
+        val raJ2000 = parseRA(raJ2000Str)
+        val decJ2000 = parseDec(decJ2000Str)
+        val (ra, dec) = applyPrecessionRad(raJ2000, decJ2000, jd)
+        return Pair(formatRA(ra), formatDec(dec))
+    }
+
+    /**
+     * 将 J2000 弧度坐标修正为当前历元坐标（含岁差）
+     * 使用 IAU 2000A (Capitaine et al. 2003) 三角函数公式
+     * 与 Skyfield precessionlib.py 一致
+     *
+     * @param raJ2000Rad 赤经 J2000 (弧度)
+     * @param decJ2000Rad 赤纬 J2000 (弧度)
+     * @param jd 目标儒略日
+     * @return Pair<当前RA弧度, 当前Dec弧度>
+     */
+    fun applyPrecessionRad(raJ2000Rad: Double, decJ2000Rad: Double, jd: Double): Pair<Double, Double> {
+        val T = (jd - 2451545.0) / 36525.0  // 儒略世纪数 (J2000 = 2451545)
+
+        // IAU 2000A Capitaine angles (arcsec)
+        val psia   = ((((-0.0000000951  * T
+                      + 0.000132851)  * T
+                      - 0.00114045)   * T
+                      - 1.0790069)    * T
+                      + 5038.481507)  * T
+
+        val omegaa = ((((+0.0000003337  * T
+                      - 0.000000467)  * T
+                      - 0.00772503)   * T
+                      + 0.0512623)    * T
+                      - 0.025754)     * T + 84381.406
+
+        val chia   = ((((-0.0000000560  * T
+                      + 0.000170663)  * T
+                      - 0.00121197)   * T
+                      - 2.3814292)    * T
+                      + 10.556403)    * T
+
+        // 转换为弧度
+        val eps0 = 84381.406 * PI / 648000.0
+        val psiaRad = psia * PI / 648000.0
+        val omegaaRad = omegaa * PI / 648000.0
+        val chiaRad = chia * PI / 648000.0
+
+        // 预计算三角函数
+        val sa = sin(eps0);         val ca = cos(eps0)
+        val sb = sin(-psiaRad);     val cb = cos(-psiaRad)
+        val sc = sin(-omegaaRad);   val cc = cos(-omegaaRad)
+        val sd = sin(chiaRad);      val cd = cos(chiaRad)
+
+        // 旋转矩阵: R3(chi_a) * R1(-omega_a) * R3(-psi_a) * R1(epsilon_0)
+        // 对应 Skyfield precessionlib.py rot3 变量
+        val e11 =  cd * cb - sb * sd * cc
+        val e12 =  cd * sb * ca + sd * cc * cb * ca - sa * sd * sc
+        val e13 =  cd * sb * sa + sd * cc * cb * sa + ca * sd * sc
+
+        val e21 = -sd * cb - sb * cd * cc
+        val e22 = -sd * sb * ca + cd * cc * cb * ca - sa * cd * sc
+        val e23 = -sd * sb * sa + cd * cc * cb * sa + ca * cd * sc
+
+        val e31 =  sb * sc
+        val e32 = -sc * cb * ca - sa * cc
+        val e33 = -sc * cb * sa + cc * ca
+
+        // 转换 RA/Dec 到方向余弦
+        val cosDec = cos(decJ2000Rad)
+        val x = cosDec * cos(raJ2000Rad)
+        val y = cosDec * sin(raJ2000Rad)
+        val z = sin(decJ2000Rad)
+
+        // 应用旋转矩阵
+        val x2 = e11 * x + e12 * y + e13 * z
+        val y2 = e21 * x + e22 * y + e23 * z
+        val z2 = e31 * x + e32 * y + e33 * z
+
+        // 转回 RA/Dec
+        val ra  = atan2(y2, x2)
+        val dec = asin(z2.coerceIn(-1.0, 1.0))
+
+        return Pair(normalizeRA(ra), dec)
+    }
+
+    /**
+     * 解析 RA 字符串 ("HH:MM:SS") → 弧度
+     */
+    fun parseRA(raStr: String): Double {
+        val parts = raStr.trim().split(":")
+        if (parts.size < 3) return 0.0
+        val h = parts[0].toDoubleOrNull() ?: 0.0
+        val m = parts[1].toDoubleOrNull() ?: 0.0
+        val s = parts[2].replace("*", ":").toDoubleOrNull() ?: 0.0
+        return ((h + m / 60.0 + s / 3600.0) * 15.0) * PI / 180.0
+    }
+
+    /**
+     * 解析 Dec 字符串 ("+DD*MM:SS" 或 "-DD*MM:SS") → 弧度
+     */
+    fun parseDec(decStr: String): Double {
+        val s = decStr.trim().replace("*", ":")
+        val negative = s.startsWith("-")
+        val absStr = if (negative) s.substring(1) else s
+        val parts = absStr.split(":")
+        if (parts.size < 3) return 0.0
+        val d = parts[0].toDoubleOrNull() ?: 0.0
+        val m = parts[1].toDoubleOrNull() ?: 0.0
+        val sec = parts[2].toDoubleOrNull() ?: 0.0
+        val deg = d + m / 60.0 + sec / 3600.0
+        return (if (negative) -deg else deg) * PI / 180.0
+    }
+
+    /**
+     * 将 RA 弧度规范化到 [0, 2π)
+     */
+    private fun normalizeRA(ra: Double): Double {
+        var result = ra % (2 * PI)
+        if (result < 0) result += 2 * PI
+        return result
+    }
+
+    // ========== 地平坐标计算 ==========
+    /**
+     * 计算任意天体的地平高度和方位角
+     * @param raRad 赤经（弧度）
+     * @param decRad 赤纬（弧度）
+     * @param observerLat 观察者纬度（度）
+     * @param observerLon 观察者经度（度）
+     * @param jd 儒略日
+     * @return Pair<高度角度, 方位角度>
+     */
+    fun getAltitudeAzimuth(
+        raRad: Double,
+        decRad: Double,
+        observerLat: Double,
+        observerLon: Double,
+        jd: Double
+    ): Pair<Double, Double> {
+        val lmst = localMeanSiderealTime(jd, observerLon)
+        val ha = lmst - raRad
+        val latRad = observerLat * PI / 180.0
+
+        val sinAlt = sin(decRad) * sin(latRad) + cos(decRad) * cos(latRad) * cos(ha)
+        val alt = asin(sinAlt.coerceIn(-1.0, 1.0)) * 180.0 / PI
+
+        // 方位角公式（标准天文公式）：从正北起算，顺时针为正
+        val az = atan2(-cos(decRad) * sin(ha),
+                       sin(decRad) * cos(latRad) - cos(decRad) * sin(latRad) * cos(ha)) * 180.0 / PI
+
+        val azNorm = if (az < 0) az + 360.0 else az
+        return Pair(alt, azNorm)
+    }
+
+    /**
+     * 计算任意天体的地平高度（重载版本，接受 RA/Dec 字符串）
+     */
+    fun getAltitude(raStr: String, decStr: String, observerLat: Double, observerLon: Double, jd: Double): Double {
+        val ra = parseRA(raStr)
+        val dec = parseDec(decStr)
+        return getAltitudeAzimuth(ra, dec, observerLat, observerLon, jd).first
+    }
 }

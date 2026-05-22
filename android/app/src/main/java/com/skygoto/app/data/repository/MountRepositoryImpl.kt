@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withTimeoutOrNull
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -238,7 +239,7 @@ class MountRepositoryImpl @Inject constructor(
                     )
                     return@withLock Result.success(GotoResult.Success)
                 } else {
-                    return@withLock Result.success(GotoError(firstDigit, GotoErrorCodes.getMessage(firstDigit)))
+                    return@withLock Result.success(GotoResult.GotoError(firstDigit, GotoErrorCodes.getMessage(firstDigit)))
                 }
             } catch (e: Exception) {
                 AppLogger.e(TAG, "setTargetAndGoto exception: ${e.message}")
@@ -481,14 +482,15 @@ class MountRepositoryImpl @Inject constructor(
         val deg = degMinParts.getOrNull(0)?.filter { it.isDigit() }?.padStart(2, '0') ?: "00"
         val min = degMinParts.getOrNull(1)?.filter { it.isDigit() }?.padStart(2, '0') ?: "00"
         
-        // 秒：优先取 parts[1]，如果 parts 只有一项则秒为 "00"
-        // 如果 parts 有3项(如 "22:23:49")，parts[1]=23 是分，parts[2]=49 是秒
+        // 秒：带四舍五入，避免截断丢失精度
         val sec = if (parts.size >= 3) {
             // 三部分格式：度:分:秒
-            parts[2].filter { it.isDigit() }.padStart(2, '0')
+            val rawSec = parts[2].filter { it.isDigit() }.toDoubleOrNull() ?: 0.0
+            ((rawSec + 0.5).toInt()).toString().padStart(2, '0')
         } else {
             // 两部分格式：度分:秒 或 度:秒
-            parts.getOrNull(1)?.filter { it.isDigit() }?.padStart(2, '0') ?: "00"
+            val rawSec = parts.getOrNull(1)?.filter { it.isDigit() }?.toDoubleOrNull() ?: 0.0
+            ((rawSec + 0.5).toInt()).toString().padStart(2, '0')
         }
         
         val result = "$sign$deg*$min:$sec"

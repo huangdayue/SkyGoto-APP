@@ -27,6 +27,12 @@ data class CatalogUiState(
     val selectedCatalog: CatalogType = CatalogType.ALL,
     val selectedType: ObjectType? = null,
     val selectedObject: CelestialObject? = null,
+    // 详情页：天体当前地平坐标
+    val selectedObjectAlt: Double? = null,
+    val selectedObjectAz: Double? = null,
+    // 详情页：修正后的目标坐标（J2000→当前历元，供 GOTO 使用）
+    val selectedObjectTargetRa: String? = null,
+    val selectedObjectTargetDec: String? = null,
     val isLoading: Boolean = false,
     val isGotoInProgress: Boolean = false,
     val gotoResult: ResultBannerConfig? = null,
@@ -34,7 +40,9 @@ data class CatalogUiState(
     val gotoProgressInfo: GotoProgressInfo? = null,
     val cachedMountLat: Double = 0.0,
     val cachedMountLon: Double = 0.0,
-    val isLocationCached: Boolean = false
+    val isLocationCached: Boolean = false,
+    // 地平线下确认弹窗
+    val showBelowHorizonDialog: Boolean = false
 )
 
 data class GotoProgressInfo(
@@ -63,6 +71,7 @@ class CatalogViewModel @Inject constructor(
     
     init {
         loadCatalogs()
+        cacheMountLocation()
     }
     
     private fun loadCatalogs() {
@@ -101,7 +110,106 @@ class CatalogViewModel @Inject constructor(
     }
     
     fun selectObject(obj: CelestialObject?) {
-        _uiState.update { it.copy(selectedObject = obj) }
+        if (obj == null) {
+            _uiState.update {
+                it.copy(
+                    selectedObject = null,
+                    selectedObjectAlt = null,
+                    selectedObjectAz = null,
+                    selectedObjectTargetRa = null,
+                    selectedObjectTargetDec = null
+                )
+            }
+            return
+        }
+
+        // 计算目标坐标（当前历元，供 GOTO 使用）
+        val jd = SolarPositionCalculator.getJulianDate(System.currentTimeMillis())
+        val observerLat = _uiState.value.cachedMountLat
+        val observerLon = _uiState.value.cachedMountLon
+
+        val hasValidLocation = isLocationCached() && observerLat != 0.0
+
+        val (targetRa, targetDec) = if (hasValidLocation) {
+            // 有 mount 位置时，计算实时坐标
+            if (isSolarSystemBody(obj)) {
+                computeTargetCoordinates(obj, observerLat, observerLon, jd)
+            } else {
+                // 恒星/深空天体：J2000 → 当前历元（岁差修正）
+                SolarPositionCalculator.applyPrecession(obj.ra, obj.dec, jd)
+            }
+        } else {
+            // 未获取到 mount 位置时，不计算坐标，alt/az 显示 "—"
+            Pair(null, null)
+        }
+
+        // 计算地平高度和方位角（用于详情页显示）
+        val altAz = if (hasValidLocation && targetRa != null && targetDec != null) {
+            val raRad = SolarPositionCalculator.parseRA(targetRa)
+            val decRad = SolarPositionCalculator.parseDec(targetDec)
+            SolarPositionCalculator.getAltitudeAzimuth(raRad, decRad, observerLat, observerLon, jd)
+        } else {
+            Pair(null, null)
+        }
+
+        _uiState.update {
+            it.copy(
+                selectedObject = obj,
+                selectedObjectAlt = altAz.first,
+                selectedObjectAz = altAz.second,
+                selectedObjectTargetRa = targetRa,
+                selectedObjectTargetDec = targetDec
+            )
+        }
+    }
+
+    /**
+     * 计算 GOTO 目标坐标（当前历元）
+     * - 太阳系天体：EnhancedAstronomyCalculator (Python/Skyfield)
+     * - 恒星/深空天体：J2000 + 岁差修正
+     */
+    private fun computeTargetCoordinates(
+        obj: CelestialObject,
+        observerLat: Double,
+        observerLon: Double,
+        jd: Double
+    ): Pair<String, String> {
+        return if (isSolarSystemBody(obj)) {
+            val planetId = getPlanetId(obj.id)
+            if (planetId != null) {
+                // 太阳系天体：Skyfield 计算当前历元坐标
+                val position = EnhancedAstronomyCalculator.calculate(planetId, observerLat, observerLon, jd)
+                if (position != null) {
+                    Pair(position.first, position.second)
+                } else {
+                    // 回退到 Kotlin 计算
+                    val fallback = SolarPositionCalculator.calculate(planetId, observerLat, observerLon, jd)
+                    if (fallback != null) Pair(fallback.first, fallback.second)
+                    else Pair(obj.ra, obj.dec)
+                }
+            } else {
+                Pair(obj.ra, obj.dec)
+            }
+        } else {
+            // 恒星/深空天体：J2000 → 当前历元（岁差修正）
+            SolarPositionCalculator.applyPrecession(obj.ra, obj.dec, jd)
+        }
+    }
+
+    private fun isLocationCached(): Boolean {
+        return _uiState.value.isLocationCached && _uiState.value.cachedMountLat != 0.0
+    }
+
+    fun dismissBelowHorizonDialog() {
+        _uiState.update { it.copy(showBelowHorizonDialog = false) }
+    }
+
+    fun confirmGotoBelowHorizon() {
+        val obj = _uiState.value.selectedObject ?: return
+        val targetRa = _uiState.value.selectedObjectTargetRa ?: return
+        val targetDec = _uiState.value.selectedObjectTargetDec ?: return
+        _uiState.update { it.copy(showBelowHorizonDialog = false) }
+        executeGoto(obj, targetRa, targetDec)
     }
     
     private fun applyFilters() {
@@ -137,55 +245,40 @@ class CatalogViewModel @Inject constructor(
         _uiState.update { it.copy(filteredObjects = filtered) }
     }
     
-    fun getObjectForGoto(): Pair<String, String>? {
-        val obj = _uiState.value.selectedObject ?: return null
-        return Pair(obj.ra, obj.dec)
-    }
-    
+    // getObjectForGoto 已废弃，GOTO 坐标直接使用 selectedObjectTargetRa/Dec
+
+    /**
+     * 触发 GOTO（从详情页按钮调用）
+     * 会先检查地平高度，低于地平线则弹出确认对话框
+     */
     fun gotoObject(obj: CelestialObject) {
+        val state = _uiState.value
+        val targetRa = state.selectedObjectTargetRa ?: return
+        val targetDec = state.selectedObjectTargetDec ?: return
+        val alt = state.selectedObjectAlt
+
+        if (alt != null && alt < 0) {
+            // 低于地平线，显示确认弹窗
+            _uiState.update { it.copy(showBelowHorizonDialog = true) }
+        } else {
+            executeGoto(obj, targetRa, targetDec)
+        }
+    }
+
+    /**
+     * 执行 GOTO（跳过地平线检查）
+     */
+    private fun executeGoto(obj: CelestialObject, targetRa: String, targetDec: String) {
         viewModelScope.launch {
             _uiState.update { it.copy(isGotoInProgress = true, gotoResult = null) }
-            
+
             val isConnected = mountRepository.isConnected.value
             if (!isConnected) {
                 _uiState.update { it.copy(isGotoInProgress = false, gotoResult = ResultBannerConfig.error("赤道仪未连接")) }
                 return@launch
             }
-            
-            val observerLat = _uiState.value.cachedMountLat
-            val observerLon = _uiState.value.cachedMountLon
-            
-            val targetRa: String
-            val targetDec: String
-            if (isSolarSystemBody(obj)) {
-                val planetId = getPlanetId(obj.id)
-                if (planetId != null) {
-                    val currentTimeMillis = System.currentTimeMillis()
-                    val jd = SolarPositionCalculator.getJulianDate(currentTimeMillis)
-                    
-                    val position = EnhancedAstronomyCalculator.calculate(planetId, observerLat, observerLon, jd)
-                    if (position != null) {
-                        targetRa = position.first
-                        targetDec = position.second
-                    } else {
-                        val fallback = SolarPositionCalculator.calculate(planetId, observerLat, observerLon, jd)
-                        if (fallback != null) {
-                            targetRa = fallback.first
-                            targetDec = fallback.second
-                        } else {
-                            targetRa = obj.ra
-                            targetDec = obj.dec
-                        }
-                    }
-                } else {
-                    targetRa = obj.ra
-                    targetDec = obj.dec
-                }
-            } else {
-                targetRa = obj.ra
-                targetDec = obj.dec
-            }
-            
+
+            AppLogger.w(TAG, "[GOTO] 目标 RA=$targetRa Dec=$targetDec")
             val result = mountRepository.setTargetAndGoto(targetRa, targetDec)
             
             result.fold(
@@ -197,7 +290,8 @@ class CatalogViewModel @Inject constructor(
                                 it.copy(
                                     isGotoInProgress = false,
                                     lastGotoObject = obj,
-                                    gotoResult = ResultBannerConfig.success("✓ ${obj.id} GOTO 执行成功"),
+                                    // GOTO 已开始，关闭弹窗后进入 GOTO 进度弹窗，无需再显示成功提示
+                                    gotoResult = null,
                                     gotoProgressInfo = GotoProgressInfo(
                                         targetRa = targetRa,
                                         targetDec = targetDec,
@@ -210,7 +304,7 @@ class CatalogViewModel @Inject constructor(
                             }
                             startGotoProgressPolling()
                         }
-                        is com.skygoto.app.domain.model.GotoError -> {
+                        is GotoResult.GotoError -> {
                             AppLogger.w(TAG, "[GOTO进度] GotoError: ${gotoResult.message}")
                             dismissGotoProgress()
                             _uiState.update { it.copy(isGotoInProgress = false, lastGotoObject = obj, gotoResult = ResultBannerConfig.error("GOTO 失败: ${gotoResult.message}")) }
@@ -378,10 +472,10 @@ class CatalogViewModel @Inject constructor(
         val cDec = parseDecHMS(currentDec)
         val tDec = parseDecHMS(targetDec)
         
-        AppLogger.w(TAG, "[GOTO进度] 兜底解析: currentRA=$cRa targetRA=$tRa currentDec=$cDec targetDec=$tDec")
+        AppLogger.d(TAG, "[GOTO进度] 兜底解析: currentRA=$cRa targetRA=$tRa currentDec=$cDec targetDec=$tDec")
         
         if (cRa == null || tRa == null || cDec == null || tDec == null) {
-            AppLogger.w(TAG, "[GOTO进度] 兜底解析失败，跳过比较")
+            AppLogger.d(TAG, "[GOTO进度] 兜底解析失败，跳过比较")
             return false
         }
         
@@ -389,11 +483,13 @@ class CatalogViewModel @Inject constructor(
         val tRaTotalSec = (tRa.first * 3600 + tRa.second * 60 + tRa.third)
         val raDiffSec = kotlin.math.abs(raTotalSec - tRaTotalSec)
         
-        val cDecTotalSec = (kotlin.math.abs(cDec.first) * 3600 + cDec.second * 60 + cDec.third) * if (cDec.first < 0) -1 else 1
-        val tDecTotalSec = (kotlin.math.abs(tDec.first) * 3600 + tDec.second * 60 + tDec.third) * if (tDec.first < 0) -1 else 1
+        // 解析后 cDec.first 已经包含符号（parseDecHMS 中 sign * d）
+        // 直接使用无需 abs，保留符号信息
+        val cDecTotalSec = cDec.first * 3600 + cDec.second * 60 + cDec.third
+        val tDecTotalSec = tDec.first * 3600 + tDec.second * 60 + tDec.third
         val decDiffSec = kotlin.math.abs(cDecTotalSec - tDecTotalSec)
         
-        AppLogger.w(TAG, "[GOTO进度] 兜底秒数: RA差=${raDiffSec}s, Dec差=${decDiffSec}s, 容忍 RA±4s Dec±10s")
+        AppLogger.d(TAG, "[GOTO进度] 兜底秒数: RA差=${raDiffSec}s, Dec差=${decDiffSec}s, 容忍 RA±4s Dec±10s")
         
         return raDiffSec <= 4 && decDiffSec <= 10
     }

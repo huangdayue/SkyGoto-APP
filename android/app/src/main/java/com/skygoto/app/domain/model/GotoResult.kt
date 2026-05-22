@@ -41,15 +41,15 @@ sealed class GotoResult {
      * 此时可以观察赤道仪移动到目标位置。
      */
     object Success : GotoResult()
-}
 
-/**
- * GOTO 错误
- *
- * @param code 错误码（见 GotoErrorCodes）
- * @param message 错误描述
- */
-data class GotoError(val code: Int, val message: String) : GotoResult()
+    /**
+     * GOTO 错误
+     *
+     * @param code 错误码（见 GotoErrorCodes）
+     * @param message 错误描述
+     */
+    data class GotoError(val code: Int, val message: String) : GotoResult()
+}
 
 /**
  * GOTO 错误码定义

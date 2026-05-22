@@ -21,16 +21,26 @@ object SkyfieldCalculator {
     private val DEC_PATTERN = Regex("""^[+-]\d{2}\*\d{2}:\d{2}$""")
     
     private var _pythonModule: PyObject? = null
+    private var pythonFailed = false
 
     /**
-     * Ensure Python module is loaded
+     * Ensure Python module is loaded (lazy, fails gracefully)
+     * @return module or null if failed
      */
-    private fun ensureModule() {
+    private fun ensureModule(): PyObject? {
+        if (pythonFailed) return null
         if (_pythonModule == null) {
-            val python = Python.getInstance()
-            _pythonModule = python.getModule("skyfield_position")
-            AppLogger.d(TAG, "Python module loaded: $_pythonModule")
+            try {
+                val python = Python.getInstance()
+                _pythonModule = python.getModule("skyfield_position")
+                AppLogger.d(TAG, "Python module loaded: $_pythonModule")
+            } catch (e: Exception) {
+                pythonFailed = true
+                AppLogger.e(TAG, "Python module init failed, falling back to Kotlin calculator", e)
+                return null
+            }
         }
+        return _pythonModule
     }
 
     /**
@@ -51,9 +61,12 @@ object SkyfieldCalculator {
         AppLogger.d(TAG, "=== SkyfieldCalculator.calculate() ENTER ===")
         AppLogger.d(TAG, "  planet=$planet, lat=$observerLat, lon=$observerLon, jd=$jd")
 
+
         try {
-            ensureModule()
-            val module = _pythonModule!!
+            val module = ensureModule() ?: run {
+                AppLogger.w(TAG, "Python module unavailable, falling back to Kotlin SolarPositionCalculator")
+                return SolarPositionCalculator.calculate(planet, observerLat, observerLon, jd)
+            }
 
             val planetName: String = planet.toSkyfieldName()
             AppLogger.d(TAG, "  planetName=$planetName")

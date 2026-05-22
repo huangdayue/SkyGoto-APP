@@ -110,12 +110,32 @@ fun CatalogScreen(
     uiState.selectedObject?.let { obj ->
         ObjectDetailSheet(
             obj = obj,
+            alt = uiState.selectedObjectAlt,
+            az = uiState.selectedObjectAz,
             onDismiss = { viewModel.selectObject(null) },
-            onGoto = {
-                viewModel.gotoObject(obj)
-                viewModel.selectObject(null)
-            }
+            onGoto = { viewModel.gotoObject(obj) }
         )
+    }
+
+    // 地平线下确认弹窗
+    if (uiState.showBelowHorizonDialog) {
+        val obj = uiState.selectedObject
+        val alt = uiState.selectedObjectAlt
+        if (obj != null && alt != null) {
+            BelowHorizonConfirmDialog(
+                objName = obj.name,
+                objId = obj.id,
+                altitude = alt,
+                onConfirm = {
+                    viewModel.confirmGotoBelowHorizon()
+                    viewModel.selectObject(null)
+                },
+                onDismiss = {
+                    viewModel.dismissBelowHorizonDialog()
+                    viewModel.selectObject(null)
+                }
+            )
+        }
     }
     
     // GOTO 进度弹窗
@@ -303,6 +323,8 @@ private fun CelestialObjectItem(
 @Composable
 private fun ObjectDetailSheet(
     obj: CelestialObject,
+    alt: Double?,
+    az: Double?,
     onDismiss: () -> Unit,
     onGoto: () -> Unit
 ) {
@@ -314,6 +336,7 @@ private fun ObjectDetailSheet(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(24.dp)
+                .wrapContentHeight(unbounded = true)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -352,7 +375,20 @@ private fun ObjectDetailSheet(
             DetailRow("星等", String.format("%.1f", obj.magnitude))
             DetailRow("赤经", obj.ra)
             DetailRow("赤纬", obj.dec)
-            
+
+            Spacer(modifier = Modifier.height(12.dp))
+            Divider(color = TextSecondary.copy(alpha = 0.3f))
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // 地平坐标（实时计算）
+            if (alt != null && az != null) {
+                DetailRow("高度角", "%.1f°".format(alt))
+                DetailRow("方位角", "%.1f°".format(az))
+            } else {
+                DetailRow("高度角", "—")
+                DetailRow("方位角", "—")
+            }
+
             Spacer(modifier = Modifier.height(24.dp))
             
             Button(
@@ -503,6 +539,60 @@ private fun GotoProgressDialog(
         },
         containerColor = Secondary,
         titleContentColor = Accent,
+        textContentColor = TextPrimary
+    )
+}
+
+@Composable
+private fun BelowHorizonConfirmDialog(
+    objName: String,
+    objId: String,
+    altitude: Double,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(dismissOnBackPress = true, dismissOnClickOutside = true),
+        icon = {
+            Icon(
+                Icons.Default.Warning,
+                contentDescription = null,
+                tint = Accent,
+                modifier = Modifier.size(40.dp)
+            )
+        },
+        title = {
+            Text("天体不可见", color = TextPrimary)
+        },
+        text = {
+            Column {
+                Text(
+                    "$objName ($objId) 当前低于地平线",
+                    color = TextPrimary
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    "高度角: %.1f°".format(altitude),
+                    color = TextSecondary
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onConfirm,
+                colors = ButtonDefaults.buttonColors(containerColor = Accent)
+            ) {
+                Text("仍要 GOTO", color = Primary)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("取消", color = TextSecondary)
+            }
+        },
+        containerColor = Secondary,
+        titleContentColor = TextPrimary,
         textContentColor = TextPrimary
     )
 }

@@ -122,8 +122,10 @@ class BluetoothConnectionManager(
             return
         }
         
-        // 清除之前的扫描结果
-        _scannedDevices.value = getPairedDevicesAsScanned()
+        // 仅在首次扫描时设置已配对设备列表，后续扫描不覆盖已有列表
+        if (_scannedDevices.value.isEmpty()) {
+            _scannedDevices.value = getPairedDevicesAsScanned()
+        }
         
         // 注册广播接收器
         registerBroadcastReceiver()
@@ -312,21 +314,23 @@ private class BluetoothConnection(
         writer.write(fullCommand)
         writer.flush()
         
-        // 读取响应直到 #
+        // 读取响应直到 #，带超时防止永久阻塞
         val response = StringBuilder()
         val buffer = CharArray(1)
         
         try {
-            while (true) {
-                val bytesRead = reader.read(buffer)
-                if (bytesRead == -1) break
-                if (buffer[0] == '#') {
-                    break
+            withTimeoutOrNull(3000L) {
+                while (true) {
+                    val bytesRead = reader.read(buffer)
+                    if (bytesRead == -1) break
+                    if (buffer[0] == '#') {
+                        break
+                    }
+                    response.append(buffer[0])
                 }
-                response.append(buffer[0])
             }
         } catch (e: Exception) {
-            // 读取超时或错误
+            // 读取超时或错误，忽略
         }
         
         response.toString()
