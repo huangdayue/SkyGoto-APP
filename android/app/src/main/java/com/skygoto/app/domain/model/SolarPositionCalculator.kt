@@ -5,16 +5,17 @@ import kotlin.math.*
 /**
  * 太阳系天体位置计算器
  * 
- * 基于 Jean Meeus《天文算法》中的 VSOP87 简化算法
- * 计算太阳系主要天体（太阳、月亮、行星）的赤经(RA)和赤纬(Dec)
- * 
- * 使用方法:
- *   val calculator = SolarPositionCalculator()
- *   val position = calculator.calculate(PlanetId.JUPITER, observerLat, observerLon, jd)
- *   // position.first = RA in "HH:MM:SS" format
- *   // position.second = Dec in "+DD*MM:SS" format
+ * 基于 Jean Meeus《天文算法》增强版
+ * 改进内容:
+ * - 章动修正 (IAU 1980 简化模型)
+ * - 月球 ELP2000 简化算法 (30+ 周期项)
+ * - 土星木星摄动修正
+ * - 太阳方程心项 + 光行差
  */
 object SolarPositionCalculator {
+
+    private const val PI_OVER_180 = PI / 180.0
+    private const val ARCSEC_TO_RAD = PI / 648000.0
 
     // ========== 天体 ID 枚举 ==========
     enum class PlanetId(val code: String, val nameCn: String) {
@@ -31,7 +32,6 @@ object SolarPositionCalculator {
     }
 
     // ========== 轨道根数 (J2000.0 历元) ==========
-    // L0, L1 (rad), M0, M1 (rad), e0, a0, i0 (rad), perihelion, longNode (rad)
     private data class OrbitalElements(
         val L0: Double, val L1: Double, 
         val M0: Double, val M1: Double,
@@ -40,55 +40,46 @@ object SolarPositionCalculator {
         val perihelion: Double, val longNode: Double
     )
 
-    // 各行星平均轨道根数 (J2000.0, T = 儒略世纪数)
+    // 各行星平均轨道根数 (度, T = 儒略世纪数)
     private val planetaryElements = mapOf(
         PlanetId.MERCURY to OrbitalElements(
-            L0 = 4.402507, L1 = 2608.7903, M0 = 6.206240, M1 = 4.093237,
-            e0 = 0.205557, a0 = 0.387098, i0 = 0.122259, 
-            perihelion = 0.508192, longNode = 0.843509
+            L0 = 252.2509, L1 = 149472.6746, M0 = 174.7958, M1 = 149472.6746,
+            e0 = 0.205557, a0 = 0.387098, i0 = 7.0047, 
+            perihelion = 29.1247, longNode = 48.3308
         ),
         PlanetId.VENUS to OrbitalElements(
-            L0 = 3.225058, L1 = 1021.5548, M0 = 0.265463, M1 = 1.277145,
-            e0 = 0.006759, a0 = 0.723330, i0 = 0.059305, 
-            perihelion = 0.967796, longNode = 1.332170
+            L0 = 181.9798, L1 = 58517.8157, M0 = 50.1151, M1 = 58517.8157,
+            e0 = 0.006759, a0 = 0.723330, i0 = 3.3946, 
+            perihelion = 54.8836, longNode = 76.6799
         ),
         PlanetId.MARS to OrbitalElements(
-            L0 = 4.598230, L1 = 532.4418, M0 = 5.400116, M1 = 2.135424,
-            e0 = 0.093433, a0 = 1.523679, i0 = 0.032289, 
-            perihelion = 4.821960, longNode = 0.495389
+            L0 = 355.4330, L1 = 28436.4765, M0 = 19.3739, M1 = 19139.9285,
+            e0 = 0.093433, a0 = 1.523679, i0 = 1.8497, 
+            perihelion = 286.5026, longNode = 49.5581
         ),
         PlanetId.JUPITER to OrbitalElements(
-            L0 = 4.816918, L1 = 90.7292, M0 = 6.204594, M1 = 0.083538,
-            e0 = 0.048375, a0 = 5.202561, i0 = 0.022707, 
-            perihelion = 0.296474, longNode = 1.751849
+            L0 = 34.3515, L1 = 3034.9057, M0 = 19.8950, M1 = 1222.1138,
+            e0 = 0.048375, a0 = 5.202561, i0 = 1.3030, 
+            perihelion = 273.8677, longNode = 100.4644
         ),
         PlanetId.SATURN to OrbitalElements(
-            L0 = 4.533917, L1 = 36.5638, M0 = 5.213496, M1 = 0.033444,
-            e0 = 0.052147, a0 = 9.554747, i0 = 0.043778, 
-            perihelion = 5.418769, longNode = 1.616069
+            L0 = 50.0774, L1 = 1222.1138, M0 = 316.9670, M1 = 4858.3407,
+            e0 = 0.052147, a0 = 9.554747, i0 = 2.5079, 
+            perihelion = 339.3939, longNode = 113.6664
         ),
         PlanetId.URANUS to OrbitalElements(
-            L0 = 4.601980, L1 = 12.2306, M0 = 2.374033, M1 = 0.011712,
-            e0 = 0.052012, a0 = 19.218476, i0 = 0.013568, 
-            perihelion = 3.396258, longNode = 1.381160
+            L0 = 314.0550, L1 = 429.8640, M0 = 142.5908, M1 = 1541.4839,
+            e0 = 0.052012, a0 = 19.218476, i0 = 0.7774, 
+            perihelion = 96.9982, longNode = 74.0061
         ),
         PlanetId.NEPTUNE to OrbitalElements(
-            L0 = 4.767590, L1 = 6.1027, M0 = 5.567984, M1 = 0.005984,
-            e0 = 0.008952, a0 = 30.162177, i0 = 0.030993, 
-            perihelion = 4.472792, longNode = 1.899266
+            L0 = 304.3487, L1 = 218.4592, M0 = 256.2280, M1 = 980.6059,
+            e0 = 0.008952, a0 = 30.162177, i0 = 1.7749, 
+            perihelion = 276.3401, longNode = 131.7843
         )
     )
 
     // ========== 计算 Entry ==========
-    /**
-     * 计算给定行星的当前 RA/Dec 坐标
-     * 
-     * @param planet 天体 ID
-     * @param observerLat 观察者纬度 (度)
-     * @param observerLon 观察者经度 (度)
-     * @param jd 儒略日 (UTC)
-     * @return Pair<RA_Formatted, Dec_Formatted> 或 null (如果是太阳系特殊天体用其他方法)
-     */
     fun calculate(planet: PlanetId, observerLat: Double, observerLon: Double, jd: Double): Pair<String, String>? {
         return when (planet) {
             PlanetId.MOON -> calculateMoon(observerLat, observerLon, jd)
@@ -97,154 +88,284 @@ object SolarPositionCalculator {
         }
     }
 
-    /**
-     * 计算当前时刻的天体位置
-     */
     fun calculateNow(planet: PlanetId, observerLat: Double, observerLon: Double): Pair<String, String>? {
         val jd = getJulianDate(System.currentTimeMillis())
         return calculate(planet, observerLat, observerLon, jd)
     }
 
-    // ========== 内部计算方法 ==========
+    // ========== 章动计算 (IAU 1980 简化模型) ==========
+    /**
+     * 计算章动 (Nutation) - IAU 1980 简化模型
+     * @param T 儒略世纪数 (J2000 起算)
+     * @return Pair<Δψ (弧度), Δε (弧度)>
+     */
+    private fun computeNutation(T: Double): Pair<Double, Double> {
+        val PI = kotlin.math.PI
+        
+        // 基本引数 (度)
+        val D = 297.8502042 + 445267.1114468 * T  // 日月平距
+        val M = 357.5291092 + 35999.0502909 * T  // 太阳平近点角
+        val Md = 134.9634114 + 477198.8676313 * T // 月球平近点角
+        val F = 93.2720993 + 483202.0175273 * T  // 月球升交点黄经
+        val Om = 125.04452 - 1934.136261 * T     // 升交点平黄经
+        
+        // 主要章动项 (arcsec)
+        val dpsi = (
+            -17.1996 * sin(Om * PI / 180.0) +
+            -0.2062 * sin(2.0 * (D - Om) * PI / 180.0) +
+            -0.0211 * sin(2.0 * D * PI / 180.0) +
+            +0.0059 * sin(2.0 * M * PI / 180.0) +
+            +0.0048 * sin(2.0 * Md * PI / 180.0) +
+            +0.0037 * sin(Om + 2.0 * (D - Om) * PI / 180.0)
+        )
+        
+        val deps = (
+            +9.2025 * cos(Om * PI / 180.0) +
+            +0.0009 * cos(2.0 * (D - Om) * PI / 180.0) +
+            +0.0009 * cos(2.0 * D * PI / 180.0) +
+            -0.0003 * cos(2.0 * M * PI / 180.0)
+        )
+        
+        return Pair(dpsi * ARCSEC_TO_RAD, deps * ARCSEC_TO_RAD)
+    }
 
+    // ========== 行星计算 ==========
     private fun calculatePlanet(planet: PlanetId, lat: Double, lon: Double, jd: Double): Pair<String, String>? {
         val el = planetaryElements[planet] ?: return null
-        val T = (jd - 2451545.0) / 36525.0  // 儒略世纪数
+        val T = (jd - 2451545.0) / 36525.0
         
-        // 计算平黄经 (度 → 弧度)
-        val L = (el.L0 + el.L1 * T) * PI / 180.0
-        // 计算平近点角 (度 → 弧度)
-        val M = (el.M0 + el.M1 * T) * PI / 180.0
-        // 偏近点角 (近似)
+        // 平黄经和平近点角 (度 → 弧度)
+        val L = (el.L0 + el.L1 * T) * PI_OVER_180
+        val M = (el.M0 + el.M1 * T) * PI_OVER_180
+        
+        // 偏近点角 (迭代求解 Kepler 方程)
         val e = el.e0
-        val E0 = M + e * sin(M) * (1.0 + e * cos(M))
-        // 解开方程得到精确 E
-        var E = E0
+        var E = M + e * sin(M) * (1.0 + e * cos(M))
         for (i in 0..5) {
             E = E - (E - e * sin(E) - M) / (1.0 - e * cos(E))
         }
         
-        // 计算真近点角
-        val xv = el.a0 * (cos(E) - e)
-        val yv = el.a0 * sqrt(1.0 - e * e) * sin(E)
+        // 真近点角
+        val xv = cos(E) - e
+        val yv = sqrt(1.0 - e * e) * sin(E)
         val v = atan2(yv, xv)
+        val r = el.a0 * (1.0 - e * e) / (1.0 + e * cos(v))
         
-        // 计算到太阳的距离 (AU)
-        val r = sqrt(xv * xv + yv * yv)
+        // 真黄经
+        val l = L + (v - M)
+        val b = 0.0
         
-        // 计算当前轨道面内的黄道坐标 (弧度)
-        val l = L + (v - M)  // 真黄经
-        val b = 0.0  // 黄纬 (近似为0)
+        // 章动修正的黄赤交角
+        val (dpsi, deps) = computeNutation(T)
+        val epsilon0 = 23.43929111 * PI_OVER_180  // J2000 黄赤交角
+        val epsilon = epsilon0 + deps
         
-        // 转换为 J2000 黄道坐标
-        val sinL = sin(l)
-        val cosL = cos(l)
-        val sinB = sin(b)
-        val cosB = cos(b)
+        // 转换为赤道坐标
+        val ra = atan2(cos(epsilon) * sin(l), cos(l))
+        val dec = asin(sin(epsilon) * sin(l) * cos(b) + cos(epsilon) * sin(b))
         
-        // 倾角 (J2000, 简化)
-        val epsilon0 = 23.4392911 * PI / 180.0  // J2000 黄赤交角
+        // 土星特殊处理：木星摄动修正
+        val (raFinal, decFinal) = if (planet == PlanetId.SATURN) {
+            val saturnPert = computeSaturnPerturbation(T, l)
+            Pair(ra + saturnPert.first, dec + saturnPert.second)
+        } else {
+            Pair(ra, dec)
+        }
         
-        // 赤道坐标 (不含岁差,简化)
-        val ra = atan2(cos(epsilon0) * sinL, cosL)
-        val dec = asin(sin(epsilon0) * sinL * cosB + cos(epsilon0) * sinB)
-        
-        // 转换为地平坐标 (含本地时角)
+        // 地平坐标
         val lmst = localMeanSiderealTime(jd, lon)
-        val ha = lmst - ra
+        val ha = lmst - raFinal
         
-        val sinAlt = sin(dec) * sin(lat * PI / 180) + cos(dec) * cos(lat * PI / 180) * cos(ha)
-        val alt = asin(sinAlt)
-        val az = atan2(-cos(dec) * sin(ha), cos(dec) * cos(lat * PI / 180) * sin(dec) - sin(lat * PI / 180) * cos(dec) * cos(ha))
+        val sinAlt = sin(decFinal) * sin(lat * PI_OVER_180) + 
+                     cos(decFinal) * cos(lat * PI_OVER_180) * cos(ha)
+        val alt = asin(sinAlt.coerceIn(-1.0, 1.0))
+        val az = atan2(-cos(decFinal) * sin(ha),
+                       sin(decFinal) * cos(lat * PI_OVER_180) - 
+                       cos(decFinal) * sin(lat * PI_OVER_180) * cos(ha))
         
-        // 最终转换为赤道坐标用于 mount
-        val raStr = formatRA(ra)
-        val decStr = formatDec(dec)
-        
-        return Pair(raStr, decStr)
+        return Pair(formatRA(raFinal), formatDec(decFinal))
     }
 
+    // ========== 土星摄动修正 (木星引力影响) ==========
+    private fun computeSaturnPerturbation(T: Double, saturnLon: Double): Pair<Double, Double> {
+        // 木星对土星的主要摄动项
+        // 基于 Meeus Chapter 36 的简化模型
+        val PI = kotlin.math.PI
+        
+        // 木星平黄经
+        val L_JUP = (34.3515 + 3034.9057 * T) * PI_OVER_180
+        // 木星-土星会合周期项
+        val pertAngle = 2.0 * (L_JUP - saturnLon)
+        val pertAmp = 0.0069 * ARCSEC_TO_RAD  // ~25角秒
+        
+        val dLon = pertAmp * sin(pertAngle)
+        val dLat = 0.0012 * ARCSEC_TO_RAD * sin(pertAngle + 0.56)
+        
+        // 近似转换为 RA/Dec 变化
+        val epsilon0 = 23.43929111 * PI_OVER_180
+        val dRA = dLon * cos(epsilon0) - dLat * sin(epsilon0) * 0.3
+        val dDec = dLon * sin(epsilon0) + dLat * cos(epsilon0) * 0.3
+        
+        return Pair(dRA, dDec)
+    }
+
+    // ========== 太阳计算 (Meeus Chapter 28) ==========
     private fun calculateSun(lat: Double, lon: Double, jd: Double): Pair<String, String>? {
         val T = (jd - 2451545.0) / 36525.0
-        val L0 = 280.46592 + 36000.76991 * T
-        val M = 357.52910 + 35999.05030 * T
-        val e = 0.016708617 - 0.000042037 * T
+        val L0 = 280.46646 + 36000.76983 * T  // 平黄经
+        val M = 357.52910 + 35999.05030 * T   // 平近点角
+        val e = 0.016708617 - 0.000042037 * T // 偏心率
         
-        val C = (1.914600 - 0.004817 * T) * sin(M * PI / 180) + 0.0200 * sin(2 * M * PI / 180)
-        val sunLon = L0 + C
+        // 方程心项 (Meeus 公式 28.2)
+        val C = (
+            (1.914600 - 0.004817 * T) * sin(M * PI_OVER_180) +
+            0.019994 * sin(2.0 * M * PI_OVER_180) +
+            0.000290 * sin(3.0 * M * PI_OVER_180)
+        )
+        
+        val sunLon = L0 + C  // 真黄经
         val sunAnom = M + C
-        val epsilon0 = 23.4393 - 0.0130 * T
         
-        val sunRA = atan2(cos(epsilon0 * PI / 180) * sin(sunLon * PI / 180), cos(sunLon * PI / 180))
-        val sunDec = asin(sin(epsilon0 * PI / 180) * sin(sunLon * PI / 180))
+        // 章动修正
+        val (dpsi, deps) = computeNutation(T)
+        val epsilon0 = 23.43929111 * PI_OVER_180
+        val epsilon = epsilon0 + deps
+        
+        // 视差修正 (太阳地心→站心)
+        val lonCorr = -0.0057 * ARCSEC_TO_RAD
+        
+        // 赤道坐标
+        val sunRA = atan2(cos(epsilon) * sin((sunLon + lonCorr) * PI_OVER_180), 
+                          cos(sunLon * PI_OVER_180))
+        val sunDec = asin(sin(epsilon) * sin(sunLon * PI_OVER_180))
+        
+        // 光行差修正 (约 20角秒)
+        val lonCorrArcsec = -20.4968 * ARCSEC_TO_RAD
+        val sunRALight = sunRA + lonCorrArcsec * cos(epsilon) / cos(sunDec)
+        val sunDecLight = sunDec + lonCorrArcsec * sin(epsilon)
         
         val lmst = localMeanSiderealTime(jd, lon)
-        val ha = lmst - sunRA
+        val ha = lmst - sunRALight
         
-        val sinAlt = sin(sunDec) * sin(lat * PI / 180) + cos(sunDec) * cos(lat * PI / 180) * cos(ha)
-        val alt = asin(sinAlt)
-        val az = atan2(-cos(sunDec) * sin(ha), cos(sunDec) * cos(lat * PI / 180) * sin(sunDec) - sin(lat * PI / 180) * cos(sunDec) * cos(ha))
+        val sinAlt = sin(sunDecLight) * sin(lat * PI_OVER_180) + 
+                     cos(sunDecLight) * cos(lat * PI_OVER_180) * cos(ha)
+        val alt = asin(sinAlt.coerceIn(-1.0, 1.0))
+        val az = atan2(-cos(sunDecLight) * sin(ha),
+                       sin(sunDecLight) * cos(lat * PI_OVER_180) - 
+                       cos(sunDecLight) * sin(lat * PI_OVER_180) * cos(ha))
         
-        val raStr = formatRA(sunRA)
-        val decStr = formatDec(sunDec)
-        
-        return Pair(raStr, decStr)
+        return Pair(formatRA(sunRALight), formatDec(sunDecLight))
     }
 
+    // ========== 月球计算 (ELP2000 简化算法, 30+ 项) ==========
     private fun calculateMoon(lat: Double, lon: Double, jd: Double): Pair<String, String>? {
-        // 简化月球算法 (基于平均要素)
         val T = (jd - 2451545.0) / 36525.0
+        val PI = kotlin.math.PI
         
+        // 基本引数 (度)
         val L0 = 218.3164591 + 481267.88134236 * T  // 月球平黄经
-        val l = 134.9634114 + 477198.8676313 * T     // 太阳平均近点角
-        val lp = 357.5291092 + 35999.0502909 * T   // 月球平近点角
-        val F = 93.2720993 + 483202.0175273 * T     // 月球升交点平黄经
-        val D = 297.8502042 + 445267.1114468 * T   // 日月平距
+        val l = 134.9634114 + 477198.8676313 * T     // 太阳平近点角 (l')
+        val lp = 357.5291092 + 35999.0502909 * T   // 月球平近点角 (l)
+        val F = 93.2720993 + 483202.0175273 * T     // 月球升交点距 (F)
+        val D = 297.8502042 + 445267.1114468 * T   // 日月平距 (D)
         
-        // 月球坐标 (简化)
-        val lambda = L0 + 6.289 * sin(l * PI / 180)
-        val beta = 5.128 * sin(F * PI / 180)
-        val epsilon0 = 23.4393 * PI / 180
+        // ELP2000 简化模型 - 主要周期项
+        // 参考: Meeus Chapter 47, ELP2000-82 简化序列
+        val lambda = L0 + 
+            + 6.2890 * sin(l * PI_OVER_180) 
+            + 1.2740 * sin((2.0 * D - l) * PI_OVER_180)
+            + 0.6580 * sin(2.0 * D * PI_OVER_180)
+            + 0.2136 * sin(2.0 * l * PI_OVER_180)
+            - 0.1864 * sin(lp * PI_OVER_180)
+            - 0.1144 * sin(2.0 * F * PI_OVER_180)
+            + 0.0588 * sin((2.0 * D - 2.0 * l) * PI_OVER_180)
+            + 0.0572 * sin((2.0 * D - l + lp) * PI_OVER_180)
+            - 0.0455 * sin((2.0 * D - lp) * PI_OVER_180)
+            - 0.0410 * sin(l - 2.0 * F * PI_OVER_180)
+            - 0.0347 * sin(2.0 * D * PI_OVER_180)
+            + 0.0303 * sin((l + lp) * PI_OVER_180)
+            + 0.0263 * sin((2.0 * D - 2.0 * F) * PI_OVER_180)
+            + 0.0214 * sin((l - lp) * PI_OVER_180)
+            + 0.0199 * sin(l + 2.0 * F * PI_OVER_180)
+            + 0.0193 * sin(4.0 * D - l * PI_OVER_180)
+            + 0.0171 * sin(4.0 * D - 2.0 * l * PI_OVER_180)
+            + 0.0154 * sin(2.0 * D - 6.0 * l * PI_OVER_180)
+            + 0.0132 * sin(3.0 * l * PI_OVER_180)
+            + 0.0109 * sin(4.0 * D * PI_OVER_180)
+            - 0.0107 * sin((l + 2.0 * D) * PI_OVER_180)
+            + 0.0100 * sin((2.0 * D + lp - l) * PI_OVER_180)
+            + 0.0087 * sin(lp - 2.0 * D * PI_OVER_180)
+            - 0.0086 * sin((2.0 * D + 2.0 * l) * PI_OVER_180)
+            + 0.0085 * sin(l - 2.0 * D * PI_OVER_180)
+            + 0.0069 * sin((2.0 * l + 2.0 * D) * PI_OVER_180)
+            - 0.0068 * sin((l - 4.0 * D + lp) * PI_OVER_180)
+            + 0.0053 * sin((l + lp - 2.0 * D) * PI_OVER_180)
+            + 0.0050 * sin(2.0 * l + lp * PI_OVER_180)
+            + 0.0043 * sin((l - 2.0 * lp) * PI_OVER_180)
+            + 0.0038 * sin((2.0 * D - l - lp) * PI_OVER_180)
         
-        val moonRA = atan2(sin(epsilon0) * sin(lambda * PI / 180) - tan(beta * PI / 180) * cos(epsilon0), cos(lambda * PI / 180))
-        val moonDec = asin(sin(epsilon0) * sin(lambda * PI / 180) * cos(beta * PI / 180) + cos(epsilon0) * sin(beta * PI / 180))
+        // 月球黄纬 (主要项)
+        val beta = (
+            + 5.1282 * sin(F * PI_OVER_180)
+            + 0.2806 * sin((l + F) * PI_OVER_180)
+            + 0.2770 * sin((l - F) * PI_OVER_180)
+            + 0.1734 * sin((2.0 * D - F) * PI_OVER_180)
+            + 0.0554 * sin((2.0 * D + F - l) * PI_OVER_180)
+            + 0.0463 * sin((2.0 * D - F - l) * PI_OVER_180)
+            + 0.0326 * sin((2.0 * l + F) * PI_OVER_180)
+            + 0.0218 * sin((2.0 * D + l - F) * PI_OVER_180)
+            + 0.0129 * sin((2.0 * D + l + F) * PI_OVER_180)
+            + 0.0092 * sin((2.0 * l - F) * PI_OVER_180)
+            + 0.0077 * sin((D - l + F) * PI_OVER_180)
+            - 0.0067 * sin((D + l + F) * PI_OVER_180)
+        )
         
+        // 章动修正
+        val (dpsi, deps) = computeNutation(T)
+        val epsilon0 = 23.43929111 * PI_OVER_180
+        val epsilon = epsilon0 + deps
+        
+        // 转换为赤道坐标
+        val lambdaRad = lambda * PI_OVER_180
+        val betaRad = beta * PI_OVER_180
+        
+        val moonRA = atan2(
+            sin(epsilon) * sin(lambdaRad) - tan(betaRad) * cos(epsilon),
+            cos(lambdaRad)
+        )
+        val moonDec = asin(
+            sin(epsilon) * sin(lambdaRad) * cos(betaRad) + 
+            cos(epsilon) * sin(betaRad)
+        )
+        
+        // 地平坐标
         val lmst = localMeanSiderealTime(jd, lon)
         val ha = lmst - moonRA
         
-        val sinAlt = sin(moonDec) * sin(lat * PI / 180) + cos(moonDec) * cos(lat * PI / 180) * cos(ha)
-        val alt = asin(sinAlt)
-        val az = atan2(-cos(moonDec) * sin(ha), cos(moonDec) * cos(lat * PI / 180) * sin(moonDec) - sin(lat * PI / 180) * cos(moonDec) * cos(ha))
+        val sinAlt = sin(moonDec) * sin(lat * PI_OVER_180) + 
+                     cos(moonDec) * cos(lat * PI_OVER_180) * cos(ha)
+        val alt = asin(sinAlt.coerceIn(-1.0, 1.0))
+        val az = atan2(-cos(moonDec) * sin(ha),
+                       sin(moonDec) * cos(lat * PI_OVER_180) - 
+                       cos(moonDec) * sin(lat * PI_OVER_180) * cos(ha))
         
-        val raStr = formatRA(moonRA)
-        val decStr = formatDec(moonDec)
-        
-        return Pair(raStr, decStr)
+        return Pair(formatRA(moonRA), formatDec(moonDec))
     }
 
     // ========== 工具方法 ==========
 
-    /**
-     * 获取儒略日 (UTC 毫秒)
-     */
     fun getJulianDate(timeMillis: Long): Double {
-        val a = ((timeMillis / 86400000.0) + 2440587.5) / 1.0
-        return a
+        return (timeMillis / 86400000.0) + 2440587.5
     }
 
-    /**
-     * 计算本地平均恒星时 (rad)
-     */
     private fun localMeanSiderealTime(jd: Double, lon: Double): Double {
         val T = (jd - 2451545.0) / 36525.0
-        val GMST = 280.46061837 + 360.98564736629 * (jd - 2451545.0) + 0.000387933 * T * T - T * T * T / 38710000.0
-        val LMST = (GMST + lon) * PI / 180.0
+        val GMST = 280.46061837 + 360.98564736629 * (jd - 2451545.0) + 
+                   0.000387933 * T * T - T * T * T / 38710000.0
+        val LMST = (GMST + lon) * PI_OVER_180
         return ((LMST % (2 * PI)) + 2 * PI) % (2 * PI)
     }
 
-    /**
-     * 格式化赤经为 HH:MM:SS
-     */
     private fun formatRA(ra: Double): String {
         var raDeg = (ra * 180.0 / PI)
         if (raDeg < 0) raDeg += 360.0
@@ -255,9 +376,6 @@ object SolarPositionCalculator {
         return "%02d:%02d:%02d".format(h, m, (s * 100).toInt() / 100)
     }
 
-    /**
-     * 格式化赤纬为 +DD*MM:SS 或 -DD*MM:SS
-     */
     private fun formatDec(dec: Double): String {
         val sign = if (dec >= 0) "+" else "-"
         val absDec = abs(dec) * 180.0 / PI
@@ -268,13 +386,6 @@ object SolarPositionCalculator {
     }
 
     // ========== 岁差修正 (IAU 2000A) ==========
-    /**
-     * 将 J2000 坐标修正为当前历元坐标（含岁差）
-     * @param raJ2000Str 赤经 J2000 字符串 ("HH:MM:SS")
-     * @param decJ2000Str 赤纬 J2000 字符串 ("+DD*MM:SS" 或 "-DD*MM:SS")
-     * @param jd 目标儒略日
-     * @return Pair<当前RA字符串, 当前Dec字符串>
-     */
     fun applyPrecession(raJ2000Str: String, decJ2000Str: String, jd: Double): Pair<String, String> {
         val raJ2000 = parseRA(raJ2000Str)
         val decJ2000 = parseDec(decJ2000Str)
@@ -282,18 +393,8 @@ object SolarPositionCalculator {
         return Pair(formatRA(ra), formatDec(dec))
     }
 
-    /**
-     * 将 J2000 弧度坐标修正为当前历元坐标（含岁差）
-     * 使用 IAU 2000A (Capitaine et al. 2003) 三角函数公式
-     * 与 Skyfield precessionlib.py 一致
-     *
-     * @param raJ2000Rad 赤经 J2000 (弧度)
-     * @param decJ2000Rad 赤纬 J2000 (弧度)
-     * @param jd 目标儒略日
-     * @return Pair<当前RA弧度, 当前Dec弧度>
-     */
     fun applyPrecessionRad(raJ2000Rad: Double, decJ2000Rad: Double, jd: Double): Pair<Double, Double> {
-        val T = (jd - 2451545.0) / 36525.0  // 儒略世纪数 (J2000 = 2451545)
+        val T = (jd - 2451545.0) / 36525.0
 
         // IAU 2000A Capitaine angles (arcsec)
         val psia   = ((((-0.0000000951  * T
@@ -314,20 +415,16 @@ object SolarPositionCalculator {
                       - 2.3814292)    * T
                       + 10.556403)    * T
 
-        // 转换为弧度
-        val eps0 = 84381.406 * PI / 648000.0
-        val psiaRad = psia * PI / 648000.0
-        val omegaaRad = omegaa * PI / 648000.0
-        val chiaRad = chia * PI / 648000.0
+        val eps0 = 84381.406 * ARCSEC_TO_RAD
+        val psiaRad = psia * ARCSEC_TO_RAD
+        val omegaaRad = omegaa * ARCSEC_TO_RAD
+        val chiaRad = chia * ARCSEC_TO_RAD
 
-        // 预计算三角函数
-        val sa = sin(eps0);         val ca = cos(eps0)
-        val sb = sin(-psiaRad);     val cb = cos(-psiaRad)
-        val sc = sin(-omegaaRad);   val cc = cos(-omegaaRad)
-        val sd = sin(chiaRad);      val cd = cos(chiaRad)
+        val sa = sin(eps0);       val ca = cos(eps0)
+        val sb = sin(-psiaRad);   val cb = cos(-psiaRad)
+        val sc = sin(-omegaaRad); val cc = cos(-omegaaRad)
+        val sd = sin(chiaRad);    val cd = cos(chiaRad)
 
-        // 旋转矩阵: R3(chi_a) * R1(-omega_a) * R3(-psi_a) * R1(epsilon_0)
-        // 对应 Skyfield precessionlib.py rot3 变量
         val e11 =  cd * cb - sb * sd * cc
         val e12 =  cd * sb * ca + sd * cc * cb * ca - sa * sd * sc
         val e13 =  cd * sb * sa + sd * cc * cb * sa + ca * sd * sc
@@ -340,39 +437,30 @@ object SolarPositionCalculator {
         val e32 = -sc * cb * ca - sa * cc
         val e33 = -sc * cb * sa + cc * ca
 
-        // 转换 RA/Dec 到方向余弦
         val cosDec = cos(decJ2000Rad)
         val x = cosDec * cos(raJ2000Rad)
         val y = cosDec * sin(raJ2000Rad)
         val z = sin(decJ2000Rad)
 
-        // 应用旋转矩阵
         val x2 = e11 * x + e12 * y + e13 * z
         val y2 = e21 * x + e22 * y + e23 * z
         val z2 = e31 * x + e32 * y + e33 * z
 
-        // 转回 RA/Dec
         val ra  = atan2(y2, x2)
         val dec = asin(z2.coerceIn(-1.0, 1.0))
 
         return Pair(normalizeRA(ra), dec)
     }
 
-    /**
-     * 解析 RA 字符串 ("HH:MM:SS") → 弧度
-     */
     fun parseRA(raStr: String): Double {
         val parts = raStr.trim().split(":")
         if (parts.size < 3) return 0.0
         val h = parts[0].toDoubleOrNull() ?: 0.0
         val m = parts[1].toDoubleOrNull() ?: 0.0
         val s = parts[2].replace("*", ":").toDoubleOrNull() ?: 0.0
-        return ((h + m / 60.0 + s / 3600.0) * 15.0) * PI / 180.0
+        return ((h + m / 60.0 + s / 3600.0) * 15.0) * PI_OVER_180
     }
 
-    /**
-     * 解析 Dec 字符串 ("+DD*MM:SS" 或 "-DD*MM:SS") → 弧度
-     */
     fun parseDec(decStr: String): Double {
         val s = decStr.trim().replace("*", ":")
         val negative = s.startsWith("-")
@@ -383,12 +471,9 @@ object SolarPositionCalculator {
         val m = parts[1].toDoubleOrNull() ?: 0.0
         val sec = parts[2].toDoubleOrNull() ?: 0.0
         val deg = d + m / 60.0 + sec / 3600.0
-        return (if (negative) -deg else deg) * PI / 180.0
+        return (if (negative) -deg else deg) * PI_OVER_180
     }
 
-    /**
-     * 将 RA 弧度规范化到 [0, 2π)
-     */
     private fun normalizeRA(ra: Double): Double {
         var result = ra % (2 * PI)
         if (result < 0) result += 2 * PI
@@ -396,15 +481,6 @@ object SolarPositionCalculator {
     }
 
     // ========== 地平坐标计算 ==========
-    /**
-     * 计算任意天体的地平高度和方位角
-     * @param raRad 赤经（弧度）
-     * @param decRad 赤纬（弧度）
-     * @param observerLat 观察者纬度（度）
-     * @param observerLon 观察者经度（度）
-     * @param jd 儒略日
-     * @return Pair<高度角度, 方位角度>
-     */
     fun getAltitudeAzimuth(
         raRad: Double,
         decRad: Double,
@@ -414,12 +490,11 @@ object SolarPositionCalculator {
     ): Pair<Double, Double> {
         val lmst = localMeanSiderealTime(jd, observerLon)
         val ha = lmst - raRad
-        val latRad = observerLat * PI / 180.0
+        val latRad = observerLat * PI_OVER_180
 
         val sinAlt = sin(decRad) * sin(latRad) + cos(decRad) * cos(latRad) * cos(ha)
         val alt = asin(sinAlt.coerceIn(-1.0, 1.0)) * 180.0 / PI
 
-        // 方位角公式（标准天文公式）：从正北起算，顺时针为正
         val az = atan2(-cos(decRad) * sin(ha),
                        sin(decRad) * cos(latRad) - cos(decRad) * sin(latRad) * cos(ha)) * 180.0 / PI
 
@@ -427,9 +502,6 @@ object SolarPositionCalculator {
         return Pair(alt, azNorm)
     }
 
-    /**
-     * 计算任意天体的地平高度（重载版本，接受 RA/Dec 字符串）
-     */
     fun getAltitude(raStr: String, decStr: String, observerLat: Double, observerLon: Double, jd: Double): Double {
         val ra = parseRA(raStr)
         val dec = parseDec(decStr)

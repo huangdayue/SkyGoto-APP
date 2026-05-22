@@ -418,12 +418,12 @@ class CatalogViewModel @Inject constructor(
         val decArcsec = parseDecArcsec(currentDec.clean())
         val targetDecArcsec = parseDecArcsec(targetDecNorm.clean())
         
-        AppLogger.w(TAG, "[GOTO进度] 解析: currentRa='$currentRa' -> ${raArcsec}, currentDec='$currentDec' -> ${decArcsec}, targetRa='${targetRa.trim()}' -> ${targetRaArcsec}, targetDec='$targetDecNorm' -> ${targetDecArcsec}")
+
         
         if (raArcsec != null && targetRaArcsec != null && decArcsec != null && targetDecArcsec != null) {
             val raDiff = kotlin.math.abs(raArcsec - targetRaArcsec)
             val decDiff = kotlin.math.abs(decArcsec - targetDecArcsec)
-            AppLogger.w(TAG, "[GOTO进度] 精确比较: RA差=${raDiff.toFloat().toInt()}角秒, Dec差=${decDiff.toFloat().toInt()}角秒, 阈值=60角秒")
+            AppLogger.d(TAG, "[GOTO进度] 精确比较: RA差=${raDiff.toInt()}角秒, Dec差=${decDiff.toInt()}角秒, 阈值=60角秒")
             return raDiff <= 60.0 && decDiff <= 60.0
         }
         
