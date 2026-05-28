@@ -86,11 +86,13 @@ chaquopy {
     defaultConfig {
         version = "3.11"
         pip {
-            // 原始配置：仅本地 wheel，由 Chaquopy 自动下载其他依赖
-            install("/home/node/.openclaw/workspace/OnStepX-APP/android/skyfield-wheels/jplephem-2.24-py3-none-any.whl")
-            install("/home/node/.openclaw/workspace/OnStepX-APP/android/skyfield-wheels/skyfield-1.54-py3-none-any.whl")
-            install("/home/node/.openclaw/workspace/OnStepX-APP/android/skyfield-wheels/pytz-2026.2-py2.py3-none-any.whl")
-            // numpy 和其他依赖由 Chaquopy 自动从 chaquo.com 下载
+            // 使用 PyPI 包名而非本地 wheel 路径
+            // Chaquopy 会自动从 chaquo.com 镜像下载兼容的 wheel
+            install("skyfield")
+            install("jplephem")
+            install("pytz")
+            install("certifi")
+            // numpy 等依赖由 Chaquopy 自动处理
         }
     }
 }
