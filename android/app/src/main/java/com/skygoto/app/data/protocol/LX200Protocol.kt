@@ -5,6 +5,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import java.io.BufferedReader
 import java.io.InputStreamReader
+import java.io.IOException
 import java.io.PrintWriter
 import java.net.InetSocketAddress
 import java.net.Socket
@@ -129,19 +130,32 @@ class TcpConnection(
         writer!!.print(fullCommand)
         writer!!.flush()
         
-        // 读取响应直到 #
+        // 读取响应直到 #（不保留结束符，与蓝牙连接行为一致）
         val response = StringBuilder()
-        val buffer = CharArray(1)
+        val charBuf = CharArray(1)
         
+        // 使用 available() + delay() 轮询替代阻塞 read()，
+        // 确保 withTimeoutOrNull 可以真正取消协程
         withTimeoutOrNull(readTimeout.toLong()) {
-            while (true) {
-                val bytesRead = reader!!.read(buffer)
-                if (bytesRead == -1) break
-                if (buffer[0] == '#') {
-                    response.append('#')
+            while (isActive) {
+                val available = try {
+                    socket?.inputStream?.available() ?: 0
+                } catch (e: Exception) {
                     break
                 }
-                response.append(buffer[0])
+                
+                if (available > 0) {
+                    val bytesRead = try {
+                        reader!!.read(charBuf)
+                    } catch (e: Exception) {
+                        break
+                    }
+                    if (bytesRead == -1) break
+                    if (charBuf[0] == '#') break       // ← 不 append #，统一行为
+                    response.append(charBuf[0])
+                } else {
+                    kotlinx.coroutines.delay(30)
+                }
             }
         }
         
@@ -167,13 +181,28 @@ class TcpConnection(
         writer!!.flush()
         
         // 只读第一个字符，1秒超时
-        val buffer = CharArray(1)
+        // 使用 available() + delay() 轮询替代阻塞 read()
+        val charBuf = CharArray(1)
         val deadline = System.currentTimeMillis() + 1000
         
-        while (System.currentTimeMillis() < deadline) {
-            val bytesRead = reader!!.read(buffer)
-            if (bytesRead == -1) break
-            return@withContext buffer[0].toString()
+        while (isActive && System.currentTimeMillis() < deadline) {
+            val available = try {
+                socket?.inputStream?.available() ?: 0
+            } catch (e: Exception) {
+                break
+            }
+            
+            if (available > 0) {
+                val bytesRead = try {
+                    reader!!.read(charBuf)
+                } catch (e: Exception) {
+                    break
+                }
+                if (bytesRead == -1) break
+                return@withContext charBuf[0].toString()
+            } else {
+                kotlinx.coroutines.delay(30)
+            }
         }
         ""  // 超时返回空
     }
@@ -183,18 +212,33 @@ class TcpConnection(
     }
     
     private fun ensureConnected() {
-        if (!isConnected) {
-            socket = Socket()
-            socket!!.connect(InetSocketAddress(host, port), connectTimeout)
-            socket!!.soTimeout = readTimeout
-            reader = BufferedReader(InputStreamReader(socket!!.getInputStream(), StandardCharsets.UTF_8))
-            writer = PrintWriter(socket!!.getOutputStream(), true, StandardCharsets.UTF_8)
+        if (isConnected) return
+        
+        // 先清理旧资源，防止文件描述符泄漏
+        close()
+        
+        try {
+            val newSocket = Socket()
+            newSocket.connect(InetSocketAddress(host, port), connectTimeout)
+            newSocket.soTimeout = readTimeout
+            socket = newSocket
+            reader = BufferedReader(InputStreamReader(newSocket.getInputStream(), StandardCharsets.UTF_8))
+            writer = PrintWriter(newSocket.getOutputStream(), true, StandardCharsets.UTF_8)
+        } catch (e: Exception) {
+            socket?.close()
+            socket = null
+            reader = null
+            writer = null
+            throw IOException("Failed to connect to $host:$port", e)
         }
     }
     
     override fun close() {
-        try { socket?.close() } catch (e: Exception) { }
-        reader?.close()
-        writer?.close()
+        try { reader?.close() } catch (_: Exception) { }
+        try { writer?.close() } catch (_: Exception) { }
+        try { socket?.close() } catch (_: Exception) { }
+        reader = null
+        writer = null
+        socket = null
     }
 }

@@ -176,7 +176,7 @@ class BluetoothConnectionManager(
                 when (intent.action) {
                     BluetoothDevice.ACTION_FOUND -> {
                         val device: BluetoothDevice? = 
-                            intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE)
+                            intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE, BluetoothDevice::class.java)
                         val rssi: Int = 
                             intent.getShortExtra(BluetoothDevice.EXTRA_RSSI, 0).toInt()
                         
@@ -290,78 +290,135 @@ class BluetoothConnectionManager(
 
 /**
  * 蓝牙协议连接实现
+ *
+ * 修复说明（2026-05-28）：
+ * - 不再使用 BufferedReader/withTimeoutOrNull 的组合
+ *   （withTimeoutOrNull 无法中断 Java 阻塞 I/O 的 reader.read()）
+ * - 改用 InputStream.available() + delay() 轮询模式，
+ *   确保协程可以被正常取消，避免 commandMutex 被永久锁死
+ * - 使用 wall-clock 时间作为超时后备，防止无限等待
  */
 @SuppressLint("MissingPermission")
 private class BluetoothConnection(
     private val socket: android.bluetooth.BluetoothSocket
 ) : ProtocolConnection {
-    
-    private val reader = socket.inputStream.bufferedReader()
+
+    companion object {
+        private const val READ_TIMEOUT_MS = 3000L
+        private const val SINGLE_CHAR_TIMEOUT_MS = 1000L
+        private const val POLL_DELAY_MS = 30L  // 轮询间隔，平衡响应速度与 CPU 占用
+    }
+
+    // 不使用 BufferedReader，直接用 InputStream 避免内部缓冲
+    private val inputStream = socket.inputStream
     private val writer = socket.outputStream.bufferedWriter()
-    
+
     override val isConnected: Boolean
         get() = socket.isConnected
-    
+
     override suspend fun flushInput() {
-        // 蓝牙连接不需要清空缓冲区
+        // 清除输入流中可能残留的旧数据
+        try {
+            val available = inputStream.available()
+            if (available > 0) {
+                val discard = ByteArray(available)
+                inputStream.read(discard)
+            }
+        } catch (_: Exception) {
+            // 忽略清理错误
+        }
     }
-    
+
     override suspend fun sendAndReceive(command: String): String = withContext(Dispatchers.IO) {
         if (!socket.isConnected) throw IOException("Socket not connected")
-        
+
         // 发送命令（带 # 结尾）
         val fullCommand = "$command#"
         writer.write(fullCommand)
         writer.flush()
-        
-        // 读取响应直到 #，带超时防止永久阻塞
+
+        // 读取响应直到 #
+        // 使用 available() + delay() 轮询替代阻塞 read()，
+        // 确保 withTimeoutOrNull 可以真正取消协程（delay 是挂起点）
         val response = StringBuilder()
-        val buffer = CharArray(1)
-        
-        try {
-            withTimeoutOrNull(3000L) {
-                while (true) {
-                    val bytesRead = reader.read(buffer)
-                    if (bytesRead == -1) break
-                    if (buffer[0] == '#') {
+        val byteBuf = ByteArray(1)
+        val deadline = System.currentTimeMillis() + READ_TIMEOUT_MS
+
+        val timedOut = withTimeoutOrNull(READ_TIMEOUT_MS) {
+            while (isActive && System.currentTimeMillis() < deadline) {
+                val available = try {
+                    inputStream.available()
+                } catch (e: IOException) {
+                    break  // 连接已断开
+                }
+
+                if (available > 0) {
+                    try {
+                        val bytesRead = inputStream.read(byteBuf)
+                        if (bytesRead == -1) break
+                        val c = (byteBuf[0].toInt() and 0xFF).toChar()
+                        if (c == '#') break
+                        response.append(c)
+                    } catch (e: IOException) {
                         break
                     }
-                    response.append(buffer[0])
+                } else {
+                    // 没有可用数据时短暂休眠，让出 CPU 并允许协程取消
+                    delay(POLL_DELAY_MS)
                 }
             }
-        } catch (e: Exception) {
-            // 读取超时或错误，忽略
         }
-        
+
+        // 超时返回已读取的部分（通常为空）
         response.toString()
     }
-    
+
     override suspend fun sendCommandNoResponse(command: String) {
         if (!socket.isConnected) return
         val fullCommand = "$command#"
         writer.write(fullCommand)
         writer.flush()
     }
-    
+
     override suspend fun sendAndReceiveSingleChar(command: String): String = withContext(Dispatchers.IO) {
         if (!socket.isConnected) return@withContext ""
         val fullCommand = "$command#"
         writer.write(fullCommand)
         writer.flush()
-        
-        val buffer = CharArray(1)
-        val deadline = System.currentTimeMillis() + 1000
-        while (System.currentTimeMillis() < deadline) {
-            val bytesRead = reader.read(buffer)
-            if (bytesRead == -1) break
-            return@withContext buffer[0].toString()
-        }
-        ""
+
+        val byteBuf = ByteArray(1)
+        val deadline = System.currentTimeMillis() + SINGLE_CHAR_TIMEOUT_MS
+
+        withTimeoutOrNull(SINGLE_CHAR_TIMEOUT_MS) {
+            while (isActive && System.currentTimeMillis() < deadline) {
+                val available = try {
+                    inputStream.available()
+                } catch (e: IOException) {
+                    break
+                }
+
+                if (available > 0) {
+                    try {
+                        val bytesRead = inputStream.read(byteBuf)
+                        if (bytesRead == -1) break
+                        // 成功读取到数据，返回
+                        val result = (byteBuf[0].toInt() and 0xFF).toChar().toString()
+                        return@withTimeoutOrNull result
+                    } catch (e: IOException) {
+                        break
+                    }
+                } else {
+                    delay(POLL_DELAY_MS)
+                }
+            }
+            // 超时或连接断开
+            ""
+        } ?: ""  // withTimeoutOrNull 返回 null 表示超时
     }
-    
+
     override fun close() {
         try {
-            socket?.close()
+            socket.close()
         } catch (e: IOException) {
             // 忽略关闭错误
         }

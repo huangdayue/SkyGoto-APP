@@ -1,9 +1,18 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("com.google.dagger.hilt.android")
     id("com.chaquo.python") version "17.0.0"
     kotlin("kapt")
+}
+
+// 从 keystore.properties 加载签名配置（不提交到 Git，保证密钥安全）
+val keystoreProperties = Properties()
+val keystorePropertiesFile = rootProject.file("keystore.properties")
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(keystorePropertiesFile.inputStream())
 }
 
 android {
@@ -29,13 +38,26 @@ android {
         }
     }
 
+    signingConfigs {
+        create("release") {
+            // 优先从 keystore.properties 读取，不存在时回退到环境变量
+            storeFile = file(keystoreProperties["storeFile"]?.toString() ?: "skygoto-release.jks")
+            storePassword = keystoreProperties["storePassword"]?.toString() ?: System.getenv("KEYSTORE_PASSWORD") ?: ""
+            keyAlias = keystoreProperties["keyAlias"]?.toString() ?: System.getenv("KEY_ALIAS") ?: ""
+            keyPassword = keystoreProperties["keyPassword"]?.toString() ?: System.getenv("KEY_PASSWORD") ?: ""
+        }
+    }
     buildTypes {
         release {
-            isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("release")
+            isMinifyEnabled = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+        }
+        debug {
+            isMinifyEnabled = false
         }
     }
     compileOptions {

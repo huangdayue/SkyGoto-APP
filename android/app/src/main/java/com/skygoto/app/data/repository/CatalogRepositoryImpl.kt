@@ -59,20 +59,28 @@ class CatalogRepositoryImpl @Inject constructor(
             
             val type = object : TypeToken<CatalogData>() {}.type
             val data: CatalogData = gson.fromJson(json, type)
-            AppLogger.d(TAG, "Parsed CatalogData: catalog=${data.catalog}, objects=${data.objects.size}")
+            val totalCount = data.totalCount ?: data.objects.size
+            AppLogger.d(TAG, "Parsed CatalogData: catalog=${data.catalog}, objects=${data.objects.size}, expected=${totalCount}")
             
-            data.objects.mapNotNull { obj ->
+            var errors = 0
+            val result = data.objects.mapNotNull { obj ->
                 try {
                     obj.toCelestialObject()
                 } catch (e: Exception) {
-                    AppLogger.e(TAG, "Error converting object ${obj.id}: ${e.message}")
+                    errors++
+                    AppLogger.e(TAG, "[数据错误] 丢弃 ${filename} 中的天体 ${obj.id}: ${e.message}")
                     null
                 }
-            }.also {
-                AppLogger.d(TAG, "Converted $filename: ${it.size} objects successfully")
             }
+            
+            if (errors > 0) {
+                AppLogger.w(TAG, "[警告] $filename 加载完成，但有 $errors 个天体解析失败被丢弃，成功 ${result.size}/${totalCount}")
+            } else {
+                AppLogger.d(TAG, "Converted $filename: ${result.size} objects successfully")
+            }
+            result
         } catch (e: Exception) {
-            AppLogger.e(TAG, "Failed to load $filename", e)
+            AppLogger.e(TAG, "Failed to load $filename: ${e.message}", e)
             emptyList()
         }
     }

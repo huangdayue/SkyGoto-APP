@@ -33,6 +33,11 @@ venv/
 .DS_Store
 Thumbs.db
 
+# === Secrets ===
+keystore.properties
+*.jks
+*.pem
+
 # === Logs ===
 *.log
 logs/
