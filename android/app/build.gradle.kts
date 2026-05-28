@@ -85,7 +85,8 @@ android {
 // skyfield 会自动拉取 jplephem、numpy 等依赖
 chaquopy {
     defaultConfig {
-        version = "3.8"
+        version = "3.11"
+        buildPython = "/usr/bin/python3"
         pip {
             install("skyfield")
             install("pytz")
