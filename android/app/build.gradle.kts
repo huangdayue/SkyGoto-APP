@@ -86,7 +86,7 @@ android {
 chaquopy {
     defaultConfig {
         version = "3.11"
-        buildPython = "/usr/bin/python3"
+        buildPython = listOf("/usr/bin/python3")
         pip {
             install("skyfield")
             install("pytz")
