@@ -81,18 +81,14 @@ android {
     }
 }
 
-// Chaquopy configuration for pip packages
+// Chaquopy pip 包配置
+// skyfield 会自动拉取 jplephem、numpy 等依赖
 chaquopy {
     defaultConfig {
         version = "3.11"
         pip {
-            // 使用 PyPI 包名而非本地 wheel 路径
-            // Chaquopy 会自动从 chaquo.com 镜像下载兼容的 wheel
             install("skyfield")
-            install("jplephem")
             install("pytz")
-            install("certifi")
-            // numpy 等依赖由 Chaquopy 自动处理
         }
     }
 }
