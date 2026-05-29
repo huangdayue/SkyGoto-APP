@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import androidx.core.content.ContextCompat
@@ -175,8 +176,13 @@ class BluetoothConnectionManager(
             override fun onReceive(context: Context, intent: Intent) {
                 when (intent.action) {
                     BluetoothDevice.ACTION_FOUND -> {
-                        val device: BluetoothDevice? = 
+                        // API 33+ 使用新 API，API < 33 使用旧 API
+                        val device: BluetoothDevice? = if (Build.VERSION.SDK_INT >= 33) {
                             intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE, BluetoothDevice::class.java)
+                        } else {
+                            @Suppress("DEPRECATION")
+                            intent.getParcelableExtra<BluetoothDevice>(BluetoothDevice.EXTRA_DEVICE)
+                        }
                         val rssi: Int = 
                             intent.getShortExtra(BluetoothDevice.EXTRA_RSSI, 0).toInt()
                         
@@ -212,7 +218,13 @@ class BluetoothConnectionManager(
             addAction(BluetoothAdapter.ACTION_DISCOVERY_FINISHED)
         }
         
-        context.registerReceiver(broadcastReceiver, filter)
+        // 修复: Android 14+ 要求 registerReceiver 必须指定导出行为标志
+        // 使用 RECEIVER_EXPORTED 因为我们需要接收系统广播
+        if (Build.VERSION.SDK_INT >= 34) {
+            context.registerReceiver(broadcastReceiver, filter, Context.RECEIVER_EXPORTED)
+        } else {
+            context.registerReceiver(broadcastReceiver, filter)
+        }
     }
     
     private fun unregisterBroadcastReceiver() {
@@ -332,6 +344,9 @@ private class BluetoothConnection(
     override suspend fun sendAndReceive(command: String): String = withContext(Dispatchers.IO) {
         if (!socket.isConnected) throw IOException("Socket not connected")
 
+        // 清空可能残留的旧数据
+        flushInput()
+
         // 发送命令（带 # 结尾）
         val fullCommand = "$command#"
         writer.write(fullCommand)
@@ -375,13 +390,17 @@ private class BluetoothConnection(
 
     override suspend fun sendCommandNoResponse(command: String) {
         if (!socket.isConnected) return
-        val fullCommand = "$command#"
+        val fullCommand = if (command.endsWith("#")) command else "$command#"
         writer.write(fullCommand)
         writer.flush()
     }
 
     override suspend fun sendAndReceiveSingleChar(command: String): String = withContext(Dispatchers.IO) {
         if (!socket.isConnected) return@withContext ""
+        
+        // 清空可能残留的旧数据
+        flushInput()
+        
         val fullCommand = "$command#"
         writer.write(fullCommand)
         writer.flush()
@@ -414,6 +433,29 @@ private class BluetoothConnection(
             // 超时或连接断开
             ""
         } ?: ""  // withTimeoutOrNull 返回 null 表示超时
+    }
+
+    /**
+     * 非阻塞读取当前缓冲区所有可用字节
+     * 0 等待时间 — 有数据就返回，没数据立即返回空串
+     * ViewModel 层负责解析 # 终止符和累积逻辑
+     */
+    override suspend fun readAvailableBytes(): String = withContext(Dispatchers.IO) {
+        if (!socket.isConnected) return@withContext ""
+
+        try {
+            val available = inputStream.available()
+            if (available <= 0) return@withContext ""
+
+            val buffer = ByteArray(available)
+            val bytesRead = inputStream.read(buffer)
+            if (bytesRead <= 0) return@withContext ""
+
+            // 返回原始字节串（包含 #、换行等所有字符）
+            String(buffer, 0, bytesRead, Charsets.US_ASCII)
+        } catch (e: IOException) {
+            ""
+        }
     }
 
     override fun close() {

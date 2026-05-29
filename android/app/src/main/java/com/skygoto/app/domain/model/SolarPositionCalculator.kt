@@ -454,10 +454,10 @@ object SolarPositionCalculator {
 
     fun parseRA(raStr: String): Double {
         val parts = raStr.trim().split(":")
-        if (parts.size < 3) return 0.0
+        if (parts.size < 2) return 0.0
         val h = parts[0].toDoubleOrNull() ?: 0.0
         val m = parts[1].toDoubleOrNull() ?: 0.0
-        val s = parts[2].replace("*", ":").toDoubleOrNull() ?: 0.0
+        val s = parts.getOrNull(2)?.replace("*", ":")?.toDoubleOrNull() ?: 0.0
         return ((h + m / 60.0 + s / 3600.0) * 15.0) * PI_OVER_180
     }
 
@@ -466,10 +466,10 @@ object SolarPositionCalculator {
         val negative = s.startsWith("-")
         val absStr = if (negative) s.substring(1) else s
         val parts = absStr.split(":")
-        if (parts.size < 3) return 0.0
+        if (parts.size < 2) return 0.0
         val d = parts[0].toDoubleOrNull() ?: 0.0
         val m = parts[1].toDoubleOrNull() ?: 0.0
-        val sec = parts[2].toDoubleOrNull() ?: 0.0
+        val sec = parts.getOrNull(2)?.toDoubleOrNull() ?: 0.0
         val deg = d + m / 60.0 + sec / 3600.0
         return (if (negative) -deg else deg) * PI_OVER_180
     }

@@ -18,10 +18,10 @@ class LX200Protocol(
     private val connection: ProtocolConnection
 ) {
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
-    
+
     val isConnected: Boolean
         get() = connection.isConnected
-    
+
     suspend fun sendCommand(command: String): Result<String> = withContext(Dispatchers.IO) {
         try {
             val response = connection.sendAndReceive(command)
@@ -30,7 +30,7 @@ class LX200Protocol(
             Result.failure(e)
         }
     }
-    
+
     // 解析 RA: "05:34:32" -> Double (小时)
     fun parseRA(str: String): Double {
         val clean = str.trim().removePrefix("+")
@@ -41,7 +41,7 @@ class LX200Protocol(
         val s = parts[2].toDoubleOrNull() ?: return 0.0
         return h + m / 60.0 + s / 3600.0
     }
-    
+
     // 解析 Dec: "+45*12:34" -> Double (度)
     fun parseDec(str: String): Double {
         val sign = if (str.startsWith('-')) -1.0 else 1.0
@@ -49,12 +49,12 @@ class LX200Protocol(
         val parts = content.split(":")
         if (parts.size < 2) return 0.0
         return sign * (
-            (parts[0].toDoubleOrNull() ?: 0.0) + 
+            (parts[0].toDoubleOrNull() ?: 0.0) +
             (parts[1].toDoubleOrNull() ?: 0.0) / 60.0 +
             (if (parts.size > 2) (parts[2].toDoubleOrNull() ?: 0.0) / 3600.0 else 0.0)
         )
     }
-    
+
     // 格式化 RA 为命令格式
     fun formatRA(raHours: Double): String {
         val h = raHours.toInt()
@@ -62,7 +62,7 @@ class LX200Protocol(
         val s = ((raHours - h - m / 60.0) * 3600.0).toInt()
         return "%02d:%02d:%02d".format(h, m, s)
     }
-    
+
     // 格式化 Dec 为命令格式
     fun formatDec(decDeg: Double): String {
         val sign = if (decDeg < 0) "-" else "+"
@@ -72,7 +72,7 @@ class LX200Protocol(
         val s = ((abs - d - m / 60.0) * 3600.0).toInt()
         return "%s%02d*%02d:%02d".format(sign, d, m, s)
     }
-    
+
     suspend fun sendCommandNoResponse(command: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             connection.sendCommandNoResponse(command)
@@ -81,11 +81,15 @@ class LX200Protocol(
             Result.failure(e)
         }
     }
-    
+
     suspend fun sendAndReadSingleDigit(command: String): String = withContext(Dispatchers.IO) {
         connection.sendAndReceiveSingleChar(command)
     }
-    
+
+    suspend fun readAvailableBytes(): String = withContext(Dispatchers.IO) {
+        connection.readAvailableBytes()
+    }
+
     fun close() {
         scope.cancel()
         connection.close()
@@ -100,6 +104,15 @@ interface ProtocolConnection {
     suspend fun sendCommandNoResponse(command: String)
     suspend fun sendAndReceiveSingleChar(command: String): String
     suspend fun flushInput()
+
+    /**
+     * 非阻塞读取当前输入流中所有可用字节
+     *
+     * 用于终端轮询模式:有数据就返回,没数据立即返回空串,0 等待时间。
+     * ViewModel 层负责解析 # 终止符和累积断句逻辑。
+     */
+    suspend fun readAvailableBytes(): String
+
     fun close()
     val isConnected: Boolean
 }
@@ -113,28 +126,28 @@ class TcpConnection(
     private val connectTimeout: Int = 10000,
     private val readTimeout: Int = 3000
 ) : ProtocolConnection {
-    
+
     private var socket: Socket? = null
     private var reader: BufferedReader? = null
     private var writer: PrintWriter? = null
-    
+
     override val isConnected: Boolean
         get() = socket?.isConnected == true && !socket!!.isClosed
-    
+
     override suspend fun sendAndReceive(command: String): String = withContext(Dispatchers.IO) {
         flushInput()  // 发送前清空缓冲区
         ensureConnected()
-        
-        // 发送命令（带 # 结尾）
+
+        // 发送命令(带 # 结尾)
         val fullCommand = "$command#"
         writer!!.print(fullCommand)
         writer!!.flush()
-        
-        // 读取响应直到 #（不保留结束符，与蓝牙连接行为一致）
+
+        // 读取响应直到 #(不保留结束符,与蓝牙连接行为一致)
         val response = StringBuilder()
         val charBuf = CharArray(1)
-        
-        // 使用 available() + delay() 轮询替代阻塞 read()，
+
+        // 使用 available() + delay() 轮询替代阻塞 read(),
         // 确保 withTimeoutOrNull 可以真正取消协程
         withTimeoutOrNull(readTimeout.toLong()) {
             while (isActive) {
@@ -143,7 +156,7 @@ class TcpConnection(
                 } catch (e: Exception) {
                     break
                 }
-                
+
                 if (available > 0) {
                     val bytesRead = try {
                         reader!!.read(charBuf)
@@ -151,47 +164,47 @@ class TcpConnection(
                         break
                     }
                     if (bytesRead == -1) break
-                    if (charBuf[0] == '#') break       // ← 不 append #，统一行为
+                    if (charBuf[0] == '#') break       // ← 不 append #,统一行为
                     response.append(charBuf[0])
                 } else {
                     kotlinx.coroutines.delay(30)
                 }
             }
         }
-        
+
         response.toString()
     }
-    
+
     override suspend fun sendCommandNoResponse(command: String) {
         flushInput()
         ensureConnected()
-        
+
         val fullCommand = if (command.endsWith("#")) command else "$command#"
         writer!!.print(fullCommand)
         writer!!.flush()
-        // 不等待响应，立即返回
+        // 不等待响应,立即返回
     }
-    
+
     override suspend fun sendAndReceiveSingleChar(command: String): String = withContext(Dispatchers.IO) {
         flushInput()
         ensureConnected()
-        
+
         val fullCommand = if (command.endsWith("#")) command else "$command#"
         writer!!.print(fullCommand)
         writer!!.flush()
-        
-        // 只读第一个字符，1秒超时
+
+        // 只读第一个字符,1秒超时
         // 使用 available() + delay() 轮询替代阻塞 read()
         val charBuf = CharArray(1)
         val deadline = System.currentTimeMillis() + 1000
-        
+
         while (isActive && System.currentTimeMillis() < deadline) {
             val available = try {
                 socket?.inputStream?.available() ?: 0
             } catch (e: Exception) {
                 break
             }
-            
+
             if (available > 0) {
                 val bytesRead = try {
                     reader!!.read(charBuf)
@@ -206,17 +219,39 @@ class TcpConnection(
         }
         ""  // 超时返回空
     }
-    
+
     override suspend fun flushInput() {
         // TCP 连接是面向流的，通常不需要清空
     }
-    
+
+    /**
+     * 非阻塞读取当前缓冲区所有可用字节
+     * 0 等待时间 — 有数据就返回，没数据立即返回空串
+     */
+    override suspend fun readAvailableBytes(): String = withContext(Dispatchers.IO) {
+        ensureConnected()
+
+        try {
+            val inputStream = socket?.inputStream ?: return@withContext ""
+            val available = inputStream.available()
+            if (available <= 0) return@withContext ""
+
+            val buffer = ByteArray(available)
+            val bytesRead = inputStream.read(buffer)
+            if (bytesRead <= 0) return@withContext ""
+
+            String(buffer, 0, bytesRead, Charsets.US_ASCII)
+        } catch (e: Exception) {
+            ""
+        }
+    }
+
     private fun ensureConnected() {
         if (isConnected) return
-        
-        // 先清理旧资源，防止文件描述符泄漏
+
+        // 先清理旧资源,防止文件描述符泄漏
         close()
-        
+
         try {
             val newSocket = Socket()
             newSocket.connect(InetSocketAddress(host, port), connectTimeout)
@@ -232,7 +267,7 @@ class TcpConnection(
             throw IOException("Failed to connect to $host:$port", e)
         }
     }
-    
+
     override fun close() {
         try { reader?.close() } catch (_: Exception) { }
         try { writer?.close() } catch (_: Exception) { }

@@ -346,4 +346,18 @@ interface MountRepository {
      * 只有在 pausePolling() 之后调用才有效。
      */
     fun resumePolling()
+    
+    // ========== 终端命令支持 ==========
+    
+    /**
+     * 发送原始 LX200 命令（不等待响应）
+     * 用于终端模式的 fire-and-forget 发送
+     */
+    suspend fun sendRawCommand(command: String): Result<Unit>
+    
+    /**
+     * 非阻塞读取赤道仪返回的字节
+     * 用于终端轮询模式，有数据就返回，无数据立即返回空
+     */
+    suspend fun readAvailableBytes(): Result<String>
 }

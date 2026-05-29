@@ -29,6 +29,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Book
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -45,6 +46,7 @@ import com.skygoto.app.ui.screens.catalog.CatalogScreen
 import com.skygoto.app.ui.screens.connect.ConnectScreen
 import com.skygoto.app.ui.screens.control.ControlScreen
 import com.skygoto.app.ui.screens.settings.SettingsScreen
+import com.skygoto.app.ui.screens.terminal.TerminalScreen
 
 /**
  * 导航页面数据类
@@ -65,6 +67,9 @@ sealed class Screen(val route: String, val title: String, val icon: ImageVector)
     /** 目录页面 - 天体目录浏览 */
     object Catalog : Screen("catalog", "目录", Icons.Default.Book)
 
+    /** 终端页面 - LX200 命令终端 */
+    object Terminal : Screen("terminal", "终端", Icons.Default.Terminal)
+
     /** 设置页面 - 应用偏好设置 */
     object Settings : Screen("settings", "设置", Icons.Default.Settings)
 }
@@ -79,6 +84,7 @@ private val bottomNavItems = listOf(
     Screen.Connect,
     Screen.Control,
     Screen.Catalog,
+    Screen.Terminal,
     Screen.Settings
 )
 
@@ -161,6 +167,9 @@ fun SkyGotoNavHost() {
 
             // 目录页面
             composable(Screen.Catalog.route) { CatalogScreen() }
+
+            // 终端页面
+            composable(Screen.Terminal.route) { TerminalScreen() }
 
             // 设置页面
             composable(Screen.Settings.route) { SettingsScreen() }

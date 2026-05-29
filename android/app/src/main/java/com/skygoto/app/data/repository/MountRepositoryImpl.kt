@@ -524,4 +524,34 @@ class MountRepositoryImpl @Inject constructor(
     override fun resumePolling() {
         startPolling()
     }
+    
+    // ========== 终端命令支持 ==========
+    
+    /**
+     * 发送原始 LX200 命令（fire-and-forget，不等待响应）
+     */
+    override suspend fun sendRawCommand(command: String): Result<Unit> {
+        val p = protocol ?: return Result.failure(Exception("Not connected"))
+        return try {
+            // 不锁 mutex，终端命令与状态轮询互不干扰
+            // （轮询仅在控制页面可见时运行，终端与控制页面不同时可见）
+            p.sendCommandNoResponse(command)
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+    
+    /**
+     * 非阻塞读取赤道仪缓冲区
+     */
+    override suspend fun readAvailableBytes(): Result<String> {
+        val p = protocol ?: return Result.failure(Exception("Not connected"))
+        return try {
+            val data = p.readAvailableBytes()
+            Result.success(data)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
 }

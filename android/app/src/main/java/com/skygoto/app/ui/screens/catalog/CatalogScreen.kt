@@ -20,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -115,7 +116,15 @@ fun CatalogScreen(
             alt = uiState.selectedObjectAlt,
             az = uiState.selectedObjectAz,
             onDismiss = { viewModel.selectObject(null) },
-            onGoto = { viewModel.gotoObject(obj) }
+            onGoto = {
+                val alt = viewModel.uiState.value.selectedObjectAlt
+                viewModel.gotoObject(obj)
+                // 低于地平线时保留详情窗口，等用户在确认弹窗中决定
+                // 不在低于地平线时关闭，否则确认弹窗找不到 selectedObject 无法显示
+                if (alt == null || alt >= 0) {
+                    viewModel.selectObject(null)
+                }
+            }
         )
     }
 
@@ -330,91 +339,133 @@ private fun ObjectDetailSheet(
     onDismiss: () -> Unit,
     onGoto: () -> Unit
 ) {
-    val scrollState = rememberScrollState()
-    
-    LaunchedEffect(Unit) {
-        scrollState.animateScrollTo(scrollState.maxValue)
-    }
-    
-    ModalBottomSheet(
+    Dialog(
         onDismissRequest = onDismiss,
-        containerColor = Secondary
+        properties = DialogProperties(
+            usePlatformDefaultWidth = true,
+            dismissOnBackPress = true,
+            dismissOnClickOutside = true
+        )
     ) {
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(24.dp)
-                .wrapContentHeight(unbounded = true)
-                .verticalScroll(scrollState)
+                .padding(horizontal = 16.dp)
+                .wrapContentHeight(),
+            contentAlignment = Alignment.BottomCenter
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .wrapContentHeight()
+                    .heightIn(max = 600.dp),
+                shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
+                color = Secondary,
+                shadowElevation = 16.dp
             ) {
-                Text(
-                    text = obj.id,
-                    style = MaterialTheme.typography.headlineMedium,
-                    color = Accent,
-                    fontWeight = FontWeight.Bold
-                )
-                TypeBadge(type = obj.type.cnName)
-            }
-            
-            Spacer(modifier = Modifier.height(16.dp))
-            
-            Text(
-                text = obj.name,
-                style = MaterialTheme.typography.titleLarge,
-                color = TextPrimary
-            )
-            
-            if (obj.altNames.isNotEmpty()) {
-                Text(
-                    text = "别名: ${obj.altNames.joinToString(", ")}",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = TextSecondary
-                )
-            }
-            
-            Spacer(modifier = Modifier.height(16.dp))
-            
-            DetailRow("星座", obj.constellation)
-            DetailRow("类型", obj.type.cnName)
-            DetailRow("星等", String.format("%.1f", obj.magnitude))
-            DetailRow("赤经", obj.ra)
-            DetailRow("赤纬", obj.dec)
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState())
+                ) {
 
-            Spacer(modifier = Modifier.height(12.dp))
-            Divider(color = TextSecondary.copy(alpha = 0.3f))
-            Spacer(modifier = Modifier.height(12.dp))
+                    // ID + Type + GOTO 按钮行
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 20.dp, vertical = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = obj.id,
+                                style = MaterialTheme.typography.headlineSmall,
+                                color = Accent,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = obj.type.cnName,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = TextSecondary
+                            )
+                        }
+                        Button(
+                            onClick = onGoto,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Accent,
+                                contentColor = Primary
+                            ),
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp)
+                        ) {
+                            Text(
+                                text = "GoTo",
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
 
-            // 地平坐标（实时计算）
-            if (alt != null && az != null) {
-                DetailRow("高度角", "%.1f°".format(alt))
-                DetailRow("方位角", "%.1f°".format(az))
-            } else {
-                DetailRow("高度角", "—")
-                DetailRow("方位角", "—")
-            }
+                    // 名称
+                    Text(
+                        text = obj.name,
+                        style = MaterialTheme.typography.titleLarge,
+                        color = TextPrimary,
+                        modifier = Modifier.padding(horizontal = 20.dp)
+                    )
 
-            Spacer(modifier = Modifier.height(24.dp))
-            
-            Button(
-                onClick = onGoto,
-                modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(containerColor = Accent)
-            ) {
-                Icon(Icons.Default.Navigation, contentDescription = null, tint = Primary)
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("GOTO ${obj.id}", color = Primary)
+                    if (obj.altNames.isNotEmpty()) {
+                        Text(
+                            text = "别名: ${obj.altNames.joinToString(", ")}",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = TextSecondary,
+                            modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 4.dp)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Divider(color = TextSecondary.copy(alpha = 0.2f), modifier = Modifier.padding(horizontal = 20.dp))
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // 详细信息
+                    Column(modifier = Modifier.padding(horizontal = 20.dp)) {
+                        DetailRow("星座", obj.constellation)
+                        DetailRow("类型", obj.type.cnName)
+                        DetailRow("星等", String.format("%.1f", obj.magnitude))
+                        DetailRow("赤经", obj.ra)
+                        DetailRow("赤纬", obj.dec)
+
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Divider(color = TextSecondary.copy(alpha = 0.2f))
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        if (alt != null && az != null) {
+                            DetailRow("高度角", "%.1f°".format(alt))
+                            DetailRow("方位角", "%.1f°".format(az))
+                        } else {
+                            DetailRow("高度角", "—")
+                            DetailRow("方位角", "—")
+                        }
+                    }
+
+                    // 描述
+                    if (obj.description.isNotBlank()) {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text(
+                            text = obj.description,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = TextSecondary,
+                            modifier = Modifier.padding(horizontal = 20.dp)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(20.dp))
+                }
             }
-            
-            Spacer(modifier = Modifier.height(16.dp))
         }
     }
 }
-
 @Composable
 private fun DetailRow(label: String, value: String) {
     Row(

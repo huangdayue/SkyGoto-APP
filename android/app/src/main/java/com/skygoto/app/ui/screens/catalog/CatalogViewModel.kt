@@ -123,43 +123,57 @@ class CatalogViewModel @Inject constructor(
             return
         }
 
-        // 计算目标坐标（当前历元，供 GOTO 使用）
-        val jd = SolarPositionCalculator.getJulianDate(System.currentTimeMillis())
-        val observerLat = _uiState.value.cachedMountLat
-        val observerLon = _uiState.value.cachedMountLon
+        try {
+            val jd = SolarPositionCalculator.getJulianDate(System.currentTimeMillis())
+            val observerLat = _uiState.value.cachedMountLat
+            val observerLon = _uiState.value.cachedMountLon
 
-        val hasValidLocation = isLocationCached() && observerLat != 0.0
+            val hasValidLocation = isLocationCached() && observerLat != 0.0
 
-        val (targetRa, targetDec) = if (hasValidLocation) {
-            // 有 mount 位置时，计算实时坐标
-            if (isSolarSystemBody(obj)) {
-                computeTargetCoordinates(obj, observerLat, observerLon, jd)
+            val (targetRa, targetDec) = if (hasValidLocation) {
+                if (isSolarSystemBody(obj)) {
+                    computeTargetCoordinates(obj, observerLat, observerLon, jd)
+                } else {
+                    SolarPositionCalculator.applyPrecession(obj.ra, obj.dec, jd)
+                }
             } else {
-                // 恒星/深空天体：J2000 → 当前历元（岁差修正）
-                SolarPositionCalculator.applyPrecession(obj.ra, obj.dec, jd)
+                Pair(null, null)
             }
-        } else {
-            // 未获取到 mount 位置时，不计算坐标，alt/az 显示 "—"
-            Pair(null, null)
-        }
 
-        // 计算地平高度和方位角（用于详情页显示）
-        val altAz = if (hasValidLocation && targetRa != null && targetDec != null) {
-            val raRad = SolarPositionCalculator.parseRA(targetRa)
-            val decRad = SolarPositionCalculator.parseDec(targetDec)
-            SolarPositionCalculator.getAltitudeAzimuth(raRad, decRad, observerLat, observerLon, jd)
-        } else {
-            Pair(null, null)
-        }
+            val altAz = if (hasValidLocation && targetRa != null && targetDec != null) {
+                try {
+                    val raRad = SolarPositionCalculator.parseRA(targetRa)
+                    val decRad = SolarPositionCalculator.parseDec(targetDec)
+                    SolarPositionCalculator.getAltitudeAzimuth(raRad, decRad, observerLat, observerLon, jd)
+                } catch (e: Exception) {
+                    AppLogger.e(TAG, "altAz calculation failed: ${e.message}")
+                    Pair(null, null)
+                }
+            } else {
+                Pair(null, null)
+            }
 
-        _uiState.update {
-            it.copy(
-                selectedObject = obj,
-                selectedObjectAlt = altAz.first,
-                selectedObjectAz = altAz.second,
-                selectedObjectTargetRa = targetRa,
-                selectedObjectTargetDec = targetDec
-            )
+            _uiState.update {
+                it.copy(
+                    selectedObject = obj,
+                    selectedObjectAlt = altAz.first,
+                    selectedObjectAz = altAz.second,
+                    selectedObjectTargetRa = targetRa,
+                    selectedObjectTargetDec = targetDec
+                )
+            }
+        } catch (e: Exception) {
+            AppLogger.e(TAG, "selectObject exception: ${e.message}", e)
+            // 兜底：即使计算失败也显示对象详情，只是坐标显示 "—"
+            _uiState.update {
+                it.copy(
+                    selectedObject = obj,
+                    selectedObjectAlt = null,
+                    selectedObjectAz = null,
+                    selectedObjectTargetRa = null,
+                    selectedObjectTargetDec = null
+                )
+            }
         }
     }
 
@@ -206,8 +220,8 @@ class CatalogViewModel @Inject constructor(
 
     fun confirmGotoBelowHorizon() {
         val obj = _uiState.value.selectedObject ?: return
-        val targetRa = _uiState.value.selectedObjectTargetRa ?: return
-        val targetDec = _uiState.value.selectedObjectTargetDec ?: return
+        val targetRa = _uiState.value.selectedObjectTargetRa ?: obj.ra
+        val targetDec = _uiState.value.selectedObjectTargetDec ?: obj.dec
         _uiState.update { it.copy(showBelowHorizonDialog = false) }
         executeGoto(obj, targetRa, targetDec)
     }
@@ -253,8 +267,9 @@ class CatalogViewModel @Inject constructor(
      */
     fun gotoObject(obj: CelestialObject) {
         val state = _uiState.value
-        val targetRa = state.selectedObjectTargetRa ?: return
-        val targetDec = state.selectedObjectTargetDec ?: return
+        // 优先使用计算的当前历元坐标，没有则回退到星表的 J2000 坐标
+        val targetRa = state.selectedObjectTargetRa ?: obj.ra
+        val targetDec = state.selectedObjectTargetDec ?: obj.dec
         val alt = state.selectedObjectAlt
 
         if (alt != null && alt < 0) {
@@ -381,7 +396,22 @@ class CatalogViewModel @Inject constructor(
         val sign = if (dms.startsWith("-")) -1.0 else 1.0
         val value = dms.replace("+", "").replace("-", "")
         
-        val parts = value.split("*")
+        // 兼容两种格式：
+        // OnStep 格式: DD*MM:SS 或 DD*MM
+        // 标准格式: DD:MM:SS
+        val parts = if (value.contains("*")) {
+            value.split("*")
+        } else {
+            // DD:MM:SS 格式，度分秒都在冒号分隔中
+            // 例如 "10:42:20" → 度=10, 分=42, 秒=20
+            val colonParts = value.split(":")
+            if (colonParts.size >= 3) {
+                listOf(colonParts[0], colonParts.drop(1).joinToString(":"))
+            } else {
+                return 0.0
+            }
+        }
+        
         if (parts.size != 2) return 0.0
         
         val degrees = parts[0].toDoubleOrNull() ?: 0.0
