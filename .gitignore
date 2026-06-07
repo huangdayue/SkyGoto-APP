@@ -12,6 +12,7 @@ captures/
 
 # === Gradle Wrapper ===
 gradle/wrapper/gradle-*.zip
+android/gradle/wrapper/gradle-*.zip
 
 # === Large Binary Assets ===
 # JPL DE421 ephemeris (~17MB) - download from NASA JPL instead

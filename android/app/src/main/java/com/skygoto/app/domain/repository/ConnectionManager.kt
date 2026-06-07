@@ -47,7 +47,7 @@ class ConnectionManager @Inject constructor(
             
             // 验证连接：尝试获取版本信息
             val protocol = LX200Protocol(connection)
-            val versionResult = protocol.sendCommand(":GVP#")
+            val versionResult = protocol.sendCommand(":GVM#")
             
             versionResult.fold(
                 onSuccess = { version ->
@@ -102,7 +102,7 @@ class ConnectionManager @Inject constructor(
             
             // 验证连接：尝试获取版本信息
             val protocol = LX200Protocol(connection)
-            val versionResult = protocol.sendCommand(":GVP#")
+            val versionResult = protocol.sendCommand(":GVM#")
             
             versionResult.fold(
                 onSuccess = { version ->

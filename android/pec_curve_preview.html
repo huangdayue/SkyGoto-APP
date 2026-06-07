@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PEC 曲线模拟预览 - SkyGoto</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { 
+  background: #0A1628; color: #B0B8C4; font-family: 'Courier New', monospace;
+  display: flex; justify-content: center; align-items: center; min-height: 100vh;
+}
+.container {
+  background: #1E2A3A; border-radius: 16px; padding: 24px;
+  width: 800px; max-width: 95vw;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+}
+h1 { font-size: 18px; color: #00D4FF; margin-bottom: 4px; }
+.subtitle { font-size: 12px; color: #B0B8C4; margin-bottom: 16px; }
+.status-bar {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 16px; padding: 12px 16px;
+  background: #0A1628; border-radius: 12px;
+}
+.status-dot {
+  display: inline-block; width: 12px; height: 12px; border-radius: 50%;
+  background: #66BB6A; margin-right: 8px;
+}
+.status-text { color: #fff; font-size: 14px; font-weight: bold; }
+.status-info { color: #B0B8C4; font-size: 12px; }
+.canvas-wrap {
+  background: #0A1628; border-radius: 12px; padding: 8px;
+  position: relative;
+}
+canvas {
+  display: block; width: 100%; height: 280px; cursor: crosshair;
+}
+.rms-label {
+  position: absolute; top: 16px; right: 18px;
+  font-size: 11px; color: #B0B8C4;
+}
+.controls {
+  display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px;
+  justify-content: center;
+}
+.btn {
+  padding: 8px 16px; border: 1px solid #00D4FF; border-radius: 8px;
+  background: transparent; color: #00D4FF; font-family: inherit;
+  font-size: 12px; cursor: pointer; transition: all 0.2s;
+}
+.btn:hover { background: #00D4FF22; }
+.btn.rec { border-color: #FF4444; color: #FF4444; }
+.btn.rec:hover { background: #FF444422; }
+.btn.play { border-color: #00FF88; color: #00FF88; }
+.btn.play:hover { background: #00FF8822; }
+.btn.active { background: #00D4FF22; }
+.btn.rec.active { background: #FF444422; }
+.btn.play.active { background: #00FF8822; }
+.edit-panel {
+  margin-top: 12px; padding: 12px 16px; background: #0A1628;
+  border-radius: 12px; display: none;
+}
+.edit-panel.visible { display: block; }
+.edit-row { display: flex; align-items: center; gap: 12px; }
+.edit-label { color: #B0B8C4; font-size: 12px; min-width: 80px; }
+.edit-value { color: #00FF88; font-size: 16px; font-weight: bold; min-width: 60px; }
+input[type=range] {
+  flex: 1; height: 4px; -webkit-appearance: none; appearance: none;
+  background: #455A64; border-radius: 2px; outline: none;
+}
+input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%;
+  background: #00FF88; cursor: pointer;
+}
+.legend { display: flex; gap: 16px; margin-top: 12px; justify-content: center; font-size: 11px; }
+.legend-item { display: flex; align-items: center; gap: 4px; }
+.legend-dot { width: 20px; height: 3px; border-radius: 2px; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>PEC 修正曲线</h1>
+  <div class="subtitle">周期性误差补偿 - 曲线预览</div>
+  
+  <div class="status-bar">
+    <div>
+      <span class="status-dot"></span>
+      <span class="status-text" id="statusText">空闲</span>
+    </div>
+    <div class="status-info" id="statusInfo">缓存 862秒 · 25600 步/圈</div>
+  </div>
+
+  <div class="canvas-wrap">
+    <canvas id="pecCanvas"></canvas>
+    <div class="rms-label" id="rmsLabel">RMS: -- 步</div>
+  </div>
+
+  <div class="legend">
+    <div class="legend-item">
+      <div class="legend-dot" style="background:#B0BEC5"></div>
+      <span style="color:#B0BEC5">空闲</span>
+    </div>
+    <div class="legend-item">
+      <div class="legend-dot" style="background:#4FC3F7"></div>
+      <span style="color:#4FC3F7">录制中</span>
+    </div>
+    <div class="legend-item">
+      <div class="legend-dot" style="background:#66BB6A"></div>
+      <span style="color:#66BB6A">回放中</span>
+    </div>
+    <div class="legend-item">
+      <div class="legend-dot" style="background:#FF5252"></div>
+      <span style="color:#FF5252">选中点</span>
+    </div>
+  </div>
+
+  <div class="controls" id="modeControls">
+    <button class="btn" onclick="toggleMode('idle')" id="btnIdle">⏹ 空闲</button>
+    <button class="btn play" onclick="toggleMode('play')" id="btnPlay">▶ 回放</button>
+    <button class="btn rec" onclick="toggleMode('record')" id="btnRecord">⏺ 录制</button>
+    <button class="btn" onclick="resetZoom()">⟲ 重置缩放</button>
+  </div>
+
+  <div class="edit-panel" id="editPanel">
+    <div class="edit-row">
+      <span class="edit-label">第 <span id="selectedSec">0</span> 秒</span>
+      <span class="edit-value" id="editValueDisplay">+0 步</span>
+      <input type="range" id="editSlider" min="-127" max="127" value="0"
+             oninput="onSliderChange(this.value)">
+    </div>
+    <div class="controls" style="margin-top:8px">
+      <button class="btn" onclick="quickAdjust(-10)">-10</button>
+      <button class="btn" onclick="quickAdjust(-5)">-5</button>
+      <button class="btn" onclick="quickAdjust(-1)">-1</button>
+      <button class="btn" onclick="quickAdjust(1)">+1</button>
+      <button class="btn" onclick="quickAdjust(5)">+5</button>
+      <button class="btn" onclick="quickAdjust(10)">+10</button>
+      <button class="btn" onclick="resetPoint()">归零</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ========== 生成模拟 PEC 曲线 ==========
+const TOTAL_SECONDS = 862;
+const BASE_AMPLITUDE = 35;
+
+function generatePecCurve() {
+  const data = [];
+  for (let i = 0; i < TOTAL_SECONDS; i++) {
+    const t = i / TOTAL_SECONDS;
+    // 基波（蜗杆周期）
+    let v = Math.sin(t * 2 * Math.PI) * BASE_AMPLITUDE;
+    // 2 次谐波
+    v += Math.sin(t * 4 * Math.PI + 0.5) * 12;
+    // 3 次谐波
+    v += Math.sin(t * 6 * Math.PI + 1.2) * 5;
+    // 高频随机噪声（齿轮啮合）
+    v += (Math.random() - 0.5) * 6;
+    // 局部非对称凸起（模拟齿面磨损）
+    if (i > 200 && i < 280) v += 8 * Math.sin((i - 200) / 80 * Math.PI);
+    if (i > 600 && i < 660) v -= 10 * Math.sin((i - 600) / 60 * Math.PI);
+    data.push(Math.round(v));
+  }
+  return data;
+}
+
+let curveData = generatePecCurve();
+let selectedIndex = -1;
+let currentMode = 'idle'; // idle | play | record
+let scale = 1;
+let offsetX = 0;
+let isDragging = false;
+let dragStartX = 0;
+let dragStartOffset = 0;
+
+const canvas = document.getElementById('pecCanvas');
+const ctx = canvas.getContext('2d');
+
+function resizeCanvas() {
+  const rect = canvas.parentElement.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = (rect.width - 16) * dpr;
+  canvas.height = 280 * dpr;
+  canvas.style.width = (rect.width - 16) + 'px';
+  canvas.style.height = '280px';
+  ctx.scale(dpr, dpr);
+}
+
+function draw() {
+  const w = parseFloat(canvas.style.width);
+  const h = parseFloat(canvas.style.height);
+  const padL = 48, padR = 16, padT = 28, padB = 28;
+  const chartW = w - padL - padR;
+  const chartH = h - padT - padB;
+  const midY = padT + chartH / 2;
+
+  const viewRange = Math.max(curveData.length / scale, 1);
+  const totalViewPixels = w + (w / scale) * (scale - 1);
+  const startIdx = Math.max(0, Math.round((-offsetX / w) * curveData.length));
+  const endIdx = Math.min(curveData.length, Math.ceil(startIdx + viewRange));
+
+  // 计算 Y 轴范围
+  const visibleData = curveData.slice(startIdx, endIdx);
+  const maxAbs = Math.max(Math.max(...visibleData.map(Math.abs)), 1) * 1.2;
+  const yRange = Math.ceil(maxAbs / 10) * 10;
+
+  ctx.clearRect(0, 0, w, h);
+
+  // --- 背景 ---
+  ctx.fillStyle = '#0A1628';
+  ctx.fillRect(0, 0, w, h);
+
+  // --- 网格线 ---
+  ctx.strokeStyle = '#1A2A3A';
+  ctx.lineWidth = 1;
+  for (let yi = -yRange; yi <= yRange; yi += 10) {
+    const y = midY - (yi / yRange) * (chartH / 2);
+    ctx.beginPath();
+    ctx.moveTo(padL, y);
+    ctx.lineTo(w - padR, y);
+    ctx.stroke();
+  }
+
+  // --- Y 轴标签 ---
+  ctx.fillStyle = '#5A6A7A';
+  ctx.font = '9px monospace';
+  ctx.textAlign = 'right';
+  for (let yi = -yRange; yi <= yRange; yi += 10) {
+    const y = midY - (yi / yRange) * (chartH / 2);
+    const label = yi >= 0 ? '+' + yi : '' + yi;
+    ctx.fillText(label, padL - 4, y + 3);
+  }
+
+  // --- 零线 ---
+  ctx.strokeStyle = '#455A64';
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([4, 4]);
+  ctx.beginPath();
+  ctx.moveTo(padL, midY);
+  ctx.lineTo(w - padR, midY);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // --- X 轴标签 ---
+  ctx.textAlign = 'center';
+  const xStep = (() => {
+    const range = endIdx - startIdx;
+    if (range <= 60) return 10;
+    if (range <= 150) return 30;
+    if (range <= 360) return 60;
+    if (range <= 720) return 120;
+    return 180;
+  })();
+  const stepXPx = chartW / Math.max(endIdx - startIdx, 1);
+  for (let i = startIdx; i < endIdx; i += xStep) {
+    const x = padL + (i - startIdx) * stepXPx;
+    ctx.fillStyle = '#5A6A7A';
+    ctx.fillText(i + 's', x, h - 6);
+  }
+
+  // --- PEC 曲线 ---
+  const lineColor = currentMode === 'record' ? '#4FC3F7' 
+                  : currentMode === 'play'   ? '#66BB6A' 
+                  : '#B0BEC5';
+  const stepX = chartW / Math.max(endIdx - startIdx - 1, 1);
+
+  ctx.strokeStyle = lineColor;
+  ctx.lineWidth = 2;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.beginPath();
+  for (let i = startIdx; i < endIdx; i++) {
+    const x = padL + (i - startIdx) * stepX;
+    const y = midY - (curveData[i] / yRange) * (chartH / 2);
+    if (i === startIdx) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  // --- 选中点 ---
+  if (selectedIndex >= startIdx && selectedIndex < endIdx) {
+    const sx = padL + (selectedIndex - startIdx) * stepX;
+    const sy = midY - (curveData[selectedIndex] / yRange) * (chartH / 2);
+    ctx.shadowColor = '#FF5252';
+    ctx.shadowBlur = 8;
+    ctx.fillStyle = '#FF5252';
+    ctx.beginPath();
+    ctx.arc(sx, sy, 8, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#FFFFFF';
+    ctx.beginPath();
+    ctx.arc(sx, sy, 4, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 更新编辑面板
+    document.getElementById('selectedSec').textContent = selectedIndex;
+    const val = curveData[selectedIndex];
+    document.getElementById('editValueDisplay').textContent = (val >= 0 ? '+' : '') + val + ' 步';
+    document.getElementById('editSlider').value = val;
+  }
+
+  // --- RMS ---
+  if (curveData.length > 0) {
+    const rms = Math.sqrt(curveData.reduce((s, v) => s + v * v, 0) / curveData.length);
+    ctx.fillStyle = '#B0B8C4';
+    ctx.font = '11px monospace';
+    ctx.textAlign = 'right';
+    ctx.fillText('RMS: ' + rms.toFixed(1) + ' 步', w - padR, padT - 6);
+  }
+}
+
+// ========== 交互 ==========
+
+canvas.addEventListener('click', (e) => {
+  const rect = canvas.getBoundingClientRect();
+  const w = parseFloat(canvas.style.width);
+  const padL = 48, padR = 16;
+  const chartW = w - padL - padR;
+  const viewRange = Math.max(curveData.length / scale, 1);
+  const startIdx = Math.max(0, Math.round((-offsetX / w) * curveData.length));
+  const endIdx = Math.min(curveData.length, Math.ceil(startIdx + viewRange));
+
+  const mx = (e.clientX - rect.left) * (parseFloat(canvas.style.width) / rect.width);
+  if (mx < padL || mx > w - padR) return;
+
+  const stepX = chartW / Math.max(endIdx - startIdx - 1, 1);
+  const idx = Math.round((mx - padL) / stepX + startIdx);
+  const clamped = Math.max(0, Math.min(curveData.length - 1, idx));
+
+  if (clamped !== selectedIndex) {
+    selectPoint(clamped);
+  }
+});
+
+function selectPoint(idx) {
+  selectedIndex = idx;
+  document.getElementById('editPanel').classList.add('visible');
+  draw();
+}
+
+canvas.addEventListener('mousedown', (e) => {
+  isDragging = true;
+  dragStartX = e.clientX;
+  dragStartOffset = offsetX;
+});
+
+window.addEventListener('mousemove', (e) => {
+  if (!isDragging || scale <= 1) return;
+  const dx = e.clientX - dragStartX;
+  const w = parseFloat(canvas.style.width);
+  offsetX = Math.min(0, Math.max(
+    -(curveData.length / scale - 1) * w / curveData.length * w,
+    dragStartOffset + dx
+  ));
+  draw();
+});
+
+window.addEventListener('mouseup', () => { isDragging = false; });
+
+canvas.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  const zoomFactor = e.deltaY < 0 ? 1.1 : 0.9;
+  scale = Math.max(1, Math.min(10, scale * zoomFactor));
+  draw();
+});
+
+function resetZoom() {
+  scale = 1;
+  offsetX = 0;
+  draw();
+}
+
+// ========== 编辑面板 ==========
+
+function onSliderChange(val) {
+  const v = parseInt(val);
+  if (selectedIndex >= 0 && selectedIndex < curveData.length) {
+    curveData[selectedIndex] = v;
+    document.getElementById('editValueDisplay').textContent = (v >= 0 ? '+' : '') + v + ' 步';
+    draw();
+  }
+}
+
+function quickAdjust(step) {
+  if (selectedIndex < 0) return;
+  const slider = document.getElementById('editSlider');
+  const newVal = Math.max(-127, Math.min(127, parseInt(slider.value) + step));
+  slider.value = newVal;
+  onSliderChange(newVal);
+}
+
+function resetPoint() {
+  if (selectedIndex < 0) return;
+  document.getElementById('editSlider').value = 0;
+  onSliderChange(0);
+}
+
+// ========== 模式切换 ==========
+
+function toggleMode(mode) {
+  currentMode = mode;
+  
+  document.querySelectorAll('#modeControls .btn').forEach(b => {
+    b.classList.remove('active');
+  });
+  if (mode === 'idle') {
+    document.getElementById('btnIdle').classList.add('active');
+    document.getElementById('statusText').textContent = '空闲';
+    document.querySelector('.status-dot').style.background = '#888';
+  } else if (mode === 'play') {
+    document.getElementById('btnPlay').classList.add('active');
+    document.getElementById('statusText').textContent = '回放中';
+    document.querySelector('.status-dot').style.background = '#66BB6A';
+    startAnimation('play');
+  } else if (mode === 'record') {
+    document.getElementById('btnRecord').classList.add('active');
+    document.getElementById('statusText').textContent = '录制中';
+    document.querySelector('.status-dot').style.background = '#FF4444';
+    startAnimation('record');
+  }
+  draw();
+}
+
+let animFrame = null;
+let animIdx = 0;
+
+function startAnimation(mode) {
+  if (animFrame) cancelAnimationFrame(animFrame);
+  animIdx = 0;
+  animate(mode);
+}
+
+function animate(mode) {
+  animIdx++;
+  // 模拟录制：新数据逐渐生成
+  if (mode === 'record' && animIdx % 3 === 0 && curveData.length < 862) {
+    const i = curveData.length;
+    const t = i / 862;
+    let v = Math.sin(t * 2 * Math.PI) * 35;
+    v += Math.sin(t * 4 * Math.PI + 0.5) * 12;
+    v += Math.sin(t * 6 * Math.PI + 1.2) * 5;
+    v += (Math.random() - 0.5) * 6;
+    curveData.push(Math.round(v));
+    selectPoint(i);
+  }
+  // 回放：光标移动
+  if (mode === 'play') {
+    selectPoint(Math.min(animIdx % 862, curveData.length - 1));
+  }
+  draw();
+  animFrame = requestAnimationFrame(() => animate(mode));
+}
+
+document.getElementById('btnIdle').classList.add('active');
+
+// ========== 初始化 ==========
+
+resizeCanvas();
+draw();
+window.addEventListener('resize', () => { resizeCanvas(); draw(); });
+</script>
+</body>
+</html>

@@ -83,11 +83,19 @@ class LX200Protocol(
     }
 
     suspend fun sendAndReadSingleDigit(command: String): String = withContext(Dispatchers.IO) {
-        connection.sendAndReceiveSingleChar(command)
+        try {
+            connection.sendAndReceiveSingleChar(command)
+        } catch (e: Exception) {
+            ""
+        }
     }
 
     suspend fun readAvailableBytes(): String = withContext(Dispatchers.IO) {
-        connection.readAvailableBytes()
+        try {
+            connection.readAvailableBytes()
+        } catch (e: Exception) {
+            ""
+        }
     }
 
     fun close() {
@@ -121,8 +129,8 @@ interface ProtocolConnection {
  * WiFi TCP 连接实现
  */
 class TcpConnection(
-    private val host: String = "192.168.1.1",
-    private val port: Int = 9999,
+    private val host: String = "192.168.0.1",
+    private val port: Int = 9998,
     private val connectTimeout: Int = 10000,
     private val readTimeout: Int = 3000
 ) : ProtocolConnection {
@@ -147,17 +155,20 @@ class TcpConnection(
         val response = StringBuilder()
         val charBuf = CharArray(1)
 
-        // 使用 available() + delay() 轮询替代阻塞 read(),
+        // 使用 reader.ready() + delay() 轮询替代阻塞 read(),
         // 确保 withTimeoutOrNull 可以真正取消协程
+        // 注意：必须检测 reader.ready() 而非 socket.inputStream.available()，
+        // 因为 BufferedReader 首次 read() 会把 socket 数据全吸进内部缓冲区，
+        // 后续只有 reader.ready() 才能反映真实可读状态。
         withTimeoutOrNull(readTimeout.toLong()) {
             while (isActive) {
-                val available = try {
-                    socket?.inputStream?.available() ?: 0
+                val dataReady = try {
+                    reader?.ready() == true
                 } catch (e: Exception) {
-                    break
+                    false
                 }
 
-                if (available > 0) {
+                if (dataReady) {
                     val bytesRead = try {
                         reader!!.read(charBuf)
                     } catch (e: Exception) {
@@ -194,18 +205,18 @@ class TcpConnection(
         writer!!.flush()
 
         // 只读第一个字符,1秒超时
-        // 使用 available() + delay() 轮询替代阻塞 read()
+        // 使用 reader.ready() + delay() 轮询
         val charBuf = CharArray(1)
         val deadline = System.currentTimeMillis() + 1000
 
         while (isActive && System.currentTimeMillis() < deadline) {
-            val available = try {
-                socket?.inputStream?.available() ?: 0
+            val dataReady = try {
+                reader?.ready() == true
             } catch (e: Exception) {
-                break
+                false
             }
 
-            if (available > 0) {
+            if (dataReady) {
                 val bytesRead = try {
                     reader!!.read(charBuf)
                 } catch (e: Exception) {
@@ -221,26 +232,34 @@ class TcpConnection(
     }
 
     override suspend fun flushInput() {
-        // TCP 连接是面向流的，通常不需要清空
+        // 清除 BufferedReader 缓存中可能残留的字节
+        // （socket.inputStream.available() 检测不到 reader 内部缓冲区）
+        try {
+            while (reader?.ready() == true) {
+                reader!!.read()
+            }
+        } catch (_: Exception) { }
     }
 
     /**
      * 非阻塞读取当前缓冲区所有可用字节
      * 0 等待时间 — 有数据就返回，没数据立即返回空串
+     *
+     * 使用 reader（BufferedReader）而非 socket.inputStream 读取，
+     * 避免与 sendAndReceive 的 reader 路径产生数据竞争。
      */
     override suspend fun readAvailableBytes(): String = withContext(Dispatchers.IO) {
         ensureConnected()
 
         try {
-            val inputStream = socket?.inputStream ?: return@withContext ""
-            val available = inputStream.available()
-            if (available <= 0) return@withContext ""
-
-            val buffer = ByteArray(available)
-            val bytesRead = inputStream.read(buffer)
-            if (bytesRead <= 0) return@withContext ""
-
-            String(buffer, 0, bytesRead, Charsets.US_ASCII)
+            if (reader?.ready() != true) return@withContext ""
+            val buf = StringBuilder()
+            while (reader?.ready() == true) {
+                val ch = reader!!.read()
+                if (ch == -1) break
+                buf.append(ch.toChar())
+            }
+            return@withContext buf.toString()
         } catch (e: Exception) {
             ""
         }
@@ -258,7 +277,7 @@ class TcpConnection(
             newSocket.soTimeout = readTimeout
             socket = newSocket
             reader = BufferedReader(InputStreamReader(newSocket.getInputStream(), StandardCharsets.UTF_8))
-            writer = PrintWriter(newSocket.getOutputStream(), true, StandardCharsets.UTF_8)
+            writer = PrintWriter(newSocket.getOutputStream(), true)
         } catch (e: Exception) {
             socket?.close()
             socket = null

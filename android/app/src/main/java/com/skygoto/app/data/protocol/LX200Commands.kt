@@ -192,7 +192,7 @@ object LX200Commands {
     
     const val VERSION_NUM = ":GVN"        // 获取固件版本号 (M.mm...)
     const val VERSION_FULL = ":GVM"       // 获取固件名称+版本
-    const val PRODUCT_NAME = ":GVP"       // 获取产品名称
+    const val PRODUCT_NAME = ":GVM"       // 获取产品名称
     const val VERSION_DATE = ":GVD"       // 获取固件构建日期 (MTH DD YYYY)
     const val VERSION_TIME = ":GVT"       // 获取固件构建时间 (HH:MM:SS)
     const val VERSION_CONFIG = ":GVC"     // 获取固件配置/产品描述
@@ -250,8 +250,11 @@ object LX200Commands {
     // 对齐模型 - Alignment Model
     // ============================================================
     
-    const val ALIGN_WRITE = ":AW"         // 写入对齐模型到 NV 存储
-    const val ALIGN_GET_STATUS = ":A?"    // 获取对齐状态 (max,current,last stars)
+    const val ALIGN_START = ":A"           // 开始对齐模式（后接星数，如 :A6#）
+    const val ALIGN_ACCEPT = ":A+"        // 接受已居中的校准星
+    const val ALIGN_END = ":A-"            // 结束对齐模式
+    const val ALIGN_WRITE = ":AW"          // 写入对齐模型到 NV 存储
+    const val ALIGN_GET_STATUS = ":A?"     // 获取对齐状态 (max,current,last stars)
     
     // ============================================================
     // 其他命令
@@ -270,4 +273,21 @@ object LX200Commands {
     const val SAVE_ABSOLUTE_ENCODER = ":SEO" // 保存绝对编码器原点
     const val SET_MOUNT_TYPE = ":SXEM"   // 设置安装类型（需重启）
     const val GET_MOUNT_TYPE = ":GXEM"   // 获取当前安装类型
+    
+    // ============================================================
+    // PEC - 周期性误差补偿
+    // ============================================================
+    
+    const val PEC_STATUS = ":\$QZ?"      // 获取 PEC 状态 (I/p/P/r/R)
+    const val PEC_PLAY = ":\$QZ+"        // 启用 PEC 回放
+    const val PEC_STOP = ":\$QZ-"        // 禁用 PEC
+    const val PEC_RECORD = ":\$QZ/"      // 开始录制
+    const val PEC_CLEAR = ":\$QZZ"       // 清空缓存
+    const val PEC_SAVE = ":\$QZ!"        // 写入 NV
+    const val PEC_READ_ENTRY = ":VR"      // 读修正值
+    const val PEC_WRITE_ENTRY = ":WR"     // 写修正值
+    const val PEC_GET_WORM_STEPS = ":GXE7"  // 蜗杆每转步数
+    const val PEC_SET_WORM_STEPS = ":SXE7," // 设置蜗杆每转步数
+    const val PEC_GET_BUFFER_SIZE = ":GXE8" // 缓存大小（秒）
+    const val PEC_GET_INDEX_POS = ":VH"     // 索位置
 }

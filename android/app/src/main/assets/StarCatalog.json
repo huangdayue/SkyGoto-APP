@@ -1,9 +1,339 @@
 {
   "catalog": "Star",
-  "description": "恒星目录 - 中国天文爱好者熟悉的著名恒星",
-  "version": "1.0",
-  "totalCount": 30,
+  "description": "全天亮星目录（67颗，J2000历元，经SIMBAD验证）",
+  "version": "2.0",
+  "totalCount": 67,
   "objects": [
+    {
+      "id": "STAR_POL",
+      "name": "北极星",
+      "name_en": "Polaris",
+      "type": "STAR",
+      "type_cn": "恒星",
+      "ra": "02:31:49",
+      "dec": "+89:15:51",
+      "constellation": "小熊座",
+      "magnitude": 1.97,
+      "description": "指向正北，当前岁差北极星",
+      "altNames": [
+        "POL"
+      ]
+    },
+    {
+      "id": "STAR_SCH",
+      "name": "王良四",
+      "name_en": "Schedar",
+      "type": "STAR",
+      "type_cn": "恒星",
+      "ra": "00:40:30",
+      "dec": "+56:32:14",
+      "constellation": "仙后座",
+      "magnitude": 2.24,
+      "description": "仙后座最亮星，W形顶端",
+      "altNames": [
+        "SCH"
+      ]
+    },
+    {
+      "id": "STAR_CAPH",
+      "name": "王良一",
+      "name_en": "Caph",
+      "type": "STAR",
+      "type_cn": "恒星",
+      "ra": "00:09:11",
+      "dec": "+59:08:59",
+      "constellation": "仙后座",
+      "magnitude": 2.28,
+      "description": "仙后座β，W形右端",
+      "altNames": [
+        "CAP"
+      ]
+    },
+    {
+      "id": "STAR_KOC",
+      "name": "天枢二",
+      "name_en": "Kochab",
+      "type": "STAR",
+      "type_cn": "恒星",
+      "ra": "14:50:42",
+      "dec": "+74:09:20",
+      "constellation": "小熊座",
+      "magnitude": 2.07,
+      "description": "小熊座β，北极二",
+      "altNames": [
+        "KOC"
+      ]
+    },
+    {
+      "id": "STAR_MIRF",
+      "name": "天船三",
+      "name_en": "Mirfak",
+      "type": "STAR",
+      "type_cn": "恒星",
+      "ra": "03:24:19",
+      "dec": "+49:51:40",
+      "constellation": "英仙座",
+      "magnitude": 1.79,
+      "description": "英仙座最亮星",
+      "altNames": [
+        "MIR"
+      ]
+    },
+    {
+      "id": "STAR_ALIOTH",
+      "name": "玉衡",
+      "name_en": "Alioth",
+      "type": "STAR",
+      "type_cn": "恒星",
+      "ra": "12:54:02",
+      "dec": "+55:57:35",
+      "constellation": "大熊座",
+      "magnitude": 1.77,
+      "description": "北斗五，北斗七星柄中",
+      "altNames": [
+        "ALI"
+      ]
+    },
+    {
+      "id": "STAR_PHEC",
+      "name": "天玑",
+      "name_en": "Phecda",
+      "type": "STAR",
+      "type_cn": "恒星",
+      "ra": "11:53:50",
+      "dec": "+53:41:41",
+      "constellation": "大熊座",
+      "magnitude": 2.41,
+      "description": "北斗三，北斗七星斗底",
+      "altNames": [
+        "PHE"
+      ]
+    },
+    {
+      "id": "STAR_ELT",
+      "name": "天钩五",
+      "name_en": "Eltanin",
+      "type": "STAR",
+      "type_cn": "恒星",
+      "ra": "17:56:36",
+      "dec": "+51:29:20",
+      "constellation": "天龙座",
+      "magnitude": 2.24,
+      "description": "天龙座最亮星",
+      "altNames": [
+        "ELT"
+      ]
+    },
+    {
+      "id": "STAR_RAST",
+      "name": "天棓四",
+      "name_en": "Rastaban",
+      "type": "STAR",
+      "type_cn": "恒星",
+      "ra": "17:30:26",
+      "dec": "+52:18:05",
+      "constellation": "天龙座",
+      "magnitude": 2.79,
+      "description": "天龙座β",
+      "altNames": [
+        "RAS"
+      ]
+    },
+    {
+      "id": "STAR_ARC",
+      "name": "大角星",
+      "name_en": "Arcturus",
+      "type": "STAR",
+      "type_cn": "恒星",
+      "ra": "14:15:40",
+      "dec": "+19:10:57",
+      "constellation": "牧夫座",
+      "magnitude": -0.05,
+      "description": "夜空第四亮星，橙巨星",
+      "altNames": [
+        "ARC"
+      ]
+    },
+    {
+      "id": "STAR_SPI",
+      "name": "角宿一",
+      "name_en": "Spica",
+      "type": "STAR",
+      "type_cn": "恒星",
+      "ra": "13:25:12",
+      "dec": "-11:09:41",
+      "constellation": "室女座",
+      "magnitude": 0.98,
+      "description": "室女座最亮星，密近双星",
+      "altNames": [
+        "SPI"
+      ]
+    },
+    {
+      "id": "STAR_DENB",
+      "name": "五帝座一",
+      "name_en": "Denebola",
+      "type": "STAR",
+      "type_cn": "恒星",
+      "ra": "11:49:04",
+      "dec": "+14:34:19",
+      "constellation": "狮子座",
+      "magnitude": 2.14,
+      "description": "狮子座β，狮尾",
+      "altNames": [
+        "DEN"
+      ]
+    },
+    {
+      "id": "STAR_REG",
+      "name": "轩辕十四",
+      "name_en": "Regulus",
+      "type": "STAR",
+      "type_cn": "恒星",
+      "ra": "10:08:22",
+      "dec": "+11:58:02",
+      "constellation": "狮子座",
+      "magnitude": 1.36,
+      "description": "狮子座最亮星，轩辕十四",
+      "altNames": [
+        "REG"
+      ]
+    },
+    {
+      "id": "STAR_DUB",
+      "name": "北斗一",
+      "name_en": "Dubhe",
+      "type": "STAR",
+      "type_cn": "恒星",
+      "ra": "11:03:44",
+      "dec": "+61:45:04",
+      "constellation": "大熊座",
+      "magnitude": 1.79,
+      "description": "天枢，北斗七星斗口",
+      "altNames": [
+        "DUB"
+      ]
+    },
+    {
+      "id": "STAR_MER",
+      "name": "北斗二",
+      "name_en": "Merak",
+      "type": "STAR",
+      "type_cn": "恒星",
+      "ra": "11:01:50",
+      "dec": "+56:22:57",
+      "constellation": "大熊座",
+      "magnitude": 2.37,
+      "description": "天璇，北斗七星斗口",
+      "altNames": [
+        "MER"
+      ]
+    },
+    {
+      "id": "STAR_MEG",
+      "name": "北斗四",
+      "name_en": "Megrez",
+      "type": "STAR",
+      "type_cn": "恒星",
+      "ra": "12:15:26",
+      "dec": "+57:01:57",
+      "constellation": "大熊座",
+      "magnitude": 3.31,
+      "description": "天权，北斗七星最暗",
+      "altNames": [
+        "MEG"
+      ]
+    },
+    {
+      "id": "STAR_MIZ",
+      "name": "北斗六",
+      "name_en": "Mizar",
+      "type": "STAR",
+      "type_cn": "恒星",
+      "ra": "13:23:56",
+      "dec": "+54:55:31",
+      "constellation": "大熊座",
+      "magnitude": 2.06,
+      "description": "开阳，肉眼可见双星",
+      "altNames": [
+        "MIZ"
+      ]
+    },
+    {
+      "id": "STAR_GEMM",
+      "name": "贯索四",
+      "name_en": "Gemma",
+      "type": "STAR",
+      "type_cn": "恒星",
+      "ra": "15:34:41",
+      "dec": "+26:42:53",
+      "constellation": "北冕座",
+      "magnitude": 2.22,
+      "description": "北冕座最亮星",
+      "altNames": [
+        "GEM"
+      ]
+    },
+    {
+      "id": "STAR_PORR",
+      "name": "东上相",
+      "name_en": "Porrima",
+      "type": "STAR",
+      "type_cn": "恒星",
+      "ra": "12:41:40",
+      "dec": "-01:26:58",
+      "constellation": "室女座",
+      "magnitude": 2.74,
+      "description": "室女座γ",
+      "altNames": [
+        "POR"
+      ]
+    },
+    {
+      "id": "STAR_ZUB2",
+      "name": "氐宿一",
+      "name_en": "Zubeneschamali",
+      "type": "STAR",
+      "type_cn": "恒星",
+      "ra": "15:17:00",
+      "dec": "-09:22:58",
+      "constellation": "天秤座",
+      "magnitude": 2.61,
+      "description": "天秤座β，唯一肉眼可见绿星",
+      "altNames": [
+        "ZUB"
+      ]
+    },
+    {
+      "id": "STAR_ZUB1",
+      "name": "氐宿四",
+      "name_en": "Zubenelgenubi",
+      "type": "STAR",
+      "type_cn": "恒星",
+      "ra": "14:50:53",
+      "dec": "-16:02:30",
+      "constellation": "天秤座",
+      "magnitude": 2.75,
+      "description": "天秤座α",
+      "altNames": [
+        "ZUB"
+      ]
+    },
+    {
+      "id": "STAR_CORC",
+      "name": "常陈一",
+      "name_en": "Cor Caroli",
+      "type": "STAR",
+      "type_cn": "恒星",
+      "ra": "12:56:02",
+      "dec": "+38:19:06",
+      "constellation": "猎犬座",
+      "magnitude": 2.9,
+      "description": "猎犬座最亮星",
+      "altNames": [
+        "COR"
+      ]
+    },
     {
       "id": "STAR_VEG",
       "name": "织女星",
@@ -28,10 +358,10 @@
       "ra": "19:50:47",
       "dec": "+08:52:06",
       "constellation": "天鹰座",
-      "magnitude": 0.77,
-      "description": "夏季大三角之一，速度最快的恒星之一",
+      "magnitude": 0.76,
+      "description": "夏季大三角之一",
       "altNames": [
-        "ALTA"
+        "ALT"
       ]
     },
     {
@@ -41,12 +371,357 @@
       "type": "STAR",
       "type_cn": "恒星",
       "ra": "20:41:26",
-      "dec": "+45:16:57",
+      "dec": "+45:16:49",
       "constellation": "天鹅座",
       "magnitude": 1.25,
-      "description": "夏季大三角之一，银河系最亮的恒星之一",
+      "description": "夏季大三角之一",
       "altNames": [
         "DEN"
+      ]
+    },
+    {
+      "id": "STAR_ANT",
+      "name": "心宿二",
+      "name_en": "Antares",
+      "type": "STAR",
+      "type_cn": "恒星",
+      "ra": "16:29:24",
+      "dec": "-26:25:55",
+      "constellation": "天蝎座",
+      "magnitude": 0.91,
+      "description": "天蝎座主星，红超巨星",
+      "altNames": [
+        "ANT"
+      ]
+    },
+    {
+      "id": "STAR_BEN",
+      "name": "摇光",
+      "name_en": "Alkaid",
+      "type": "STAR",
+      "type_cn": "恒星",
+      "ra": "13:47:32",
+      "dec": "+49:18:48",
+      "constellation": "大熊座",
+      "magnitude": 1.86,
+      "description": "北斗七，北斗柄末端",
+      "altNames": [
+        "ALK"
+      ]
+    },
+    {
+      "id": "STAR_RASA",
+      "name": "候",
+      "name_en": "Ras Alhague",
+      "type": "STAR",
+      "type_cn": "恒星",
+      "ra": "17:34:36",
+      "dec": "+12:33:36",
+      "constellation": "蛇夫座",
+      "magnitude": 2.08,
+      "description": "蛇夫座最亮星",
+      "altNames": [
+        "RAS"
+      ]
+    },
+    {
+      "id": "STAR_SHAU",
+      "name": "尾宿八",
+      "name_en": "Shaula",
+      "type": "STAR",
+      "type_cn": "恒星",
+      "ra": "17:33:36",
+      "dec": "-37:06:14",
+      "constellation": "天蝎座",
+      "magnitude": 1.63,
+      "description": "天蝎座λ，蝎尾",
+      "altNames": [
+        "SHA"
+      ]
+    },
+    {
+      "id": "STAR_KAUA",
+      "name": "箕宿三",
+      "name_en": "Kaus Australis",
+      "type": "STAR",
+      "type_cn": "恒星",
+      "ra": "18:24:10",
+      "dec": "-34:23:05",
+      "constellation": "人马座",
+      "magnitude": 1.85,
+      "description": "人马座最亮星",
+      "altNames": [
+        "KAU"
+      ]
+    },
+    {
+      "id": "STAR_NUNK",
+      "name": "斗宿二",
+      "name_en": "Nunki",
+      "type": "STAR",
+      "type_cn": "恒星",
+      "ra": "18:55:16",
+      "dec": "-26:17:48",
+      "constellation": "人马座",
+      "magnitude": 2.05,
+      "description": "人马座σ",
+      "altNames": [
+        "NUN"
+      ]
+    },
+    {
+      "id": "STAR_SADR",
+      "name": "天津一",
+      "name_en": "Sadr",
+      "type": "STAR",
+      "type_cn": "恒星",
+      "ra": "20:22:14",
+      "dec": "+40:15:24",
+      "constellation": "天鹅座",
+      "magnitude": 2.23,
+      "description": "天鹅座γ，北十字中心",
+      "altNames": [
+        "SAD"
+      ]
+    },
+    {
+      "id": "STAR_DSCH",
+      "name": "房宿三",
+      "name_en": "Dschubba",
+      "type": "STAR",
+      "type_cn": "恒星",
+      "ra": "16:00:20",
+      "dec": "-22:37:18",
+      "constellation": "天蝎座",
+      "magnitude": 2.29,
+      "description": "天蝎座δ",
+      "altNames": [
+        "DSC"
+      ]
+    },
+    {
+      "id": "STAR_ASCE",
+      "name": "斗宿四",
+      "name_en": "Ascella",
+      "type": "STAR",
+      "type_cn": "恒星",
+      "ra": "19:02:37",
+      "dec": "-29:52:48",
+      "constellation": "人马座",
+      "magnitude": 2.6,
+      "description": "人马座ζ",
+      "altNames": [
+        "ASC"
+      ]
+    },
+    {
+      "id": "STAR_KAUM",
+      "name": "箕宿二",
+      "name_en": "Kaus Media",
+      "type": "STAR",
+      "type_cn": "恒星",
+      "ra": "18:20:59",
+      "dec": "-29:49:42",
+      "constellation": "人马座",
+      "magnitude": 2.72,
+      "description": "人马座δ",
+      "altNames": [
+        "KAU"
+      ]
+    },
+    {
+      "id": "STAR_FOM",
+      "name": "北落师门",
+      "name_en": "Fomalhaut",
+      "type": "STAR",
+      "type_cn": "恒星",
+      "ra": "22:57:39",
+      "dec": "-29:37:20",
+      "constellation": "南鱼座",
+      "magnitude": 1.16,
+      "description": "南鱼座最亮星，秋季南天",
+      "altNames": [
+        "FOM"
+      ]
+    },
+    {
+      "id": "STAR_HAM",
+      "name": "娄宿三",
+      "name_en": "Hamal",
+      "type": "STAR",
+      "type_cn": "恒星",
+      "ra": "02:07:10",
+      "dec": "+23:27:45",
+      "constellation": "白羊座",
+      "magnitude": 2.01,
+      "description": "白羊座最亮星",
+      "altNames": [
+        "HAM"
+      ]
+    },
+    {
+      "id": "STAR_ALPH",
+      "name": "壁宿二",
+      "name_en": "Alpheratz",
+      "type": "STAR",
+      "type_cn": "恒星",
+      "ra": "00:08:23",
+      "dec": "+29:05:26",
+      "constellation": "仙女座",
+      "magnitude": 2.07,
+      "description": "仙女座α，飞马座四边形共用",
+      "altNames": [
+        "ALP"
+      ]
+    },
+    {
+      "id": "STAR_MIRA",
+      "name": "奎宿九",
+      "name_en": "Mirach",
+      "type": "STAR",
+      "type_cn": "恒星",
+      "ra": "01:09:44",
+      "dec": "+35:37:14",
+      "constellation": "仙女座",
+      "magnitude": 2.07,
+      "description": "仙女座β",
+      "altNames": [
+        "MIR"
+      ]
+    },
+    {
+      "id": "STAR_DIPH",
+      "name": "土司空",
+      "name_en": "Diphda",
+      "type": "STAR",
+      "type_cn": "恒星",
+      "ra": "00:43:35",
+      "dec": "-17:59:12",
+      "constellation": "鲸鱼座",
+      "magnitude": 2.04,
+      "description": "鲸鱼座最亮星",
+      "altNames": [
+        "DIP"
+      ]
+    },
+    {
+      "id": "STAR_ALMA",
+      "name": "天大将军一",
+      "name_en": "Almach",
+      "type": "STAR",
+      "type_cn": "恒星",
+      "ra": "02:03:54",
+      "dec": "+42:19:47",
+      "constellation": "仙女座",
+      "magnitude": 2.1,
+      "description": "仙女座γ，著名双星",
+      "altNames": [
+        "ALM"
+      ]
+    },
+    {
+      "id": "STAR_SHERT",
+      "name": "娄宿一",
+      "name_en": "Sheratan",
+      "type": "STAR",
+      "type_cn": "恒星",
+      "ra": "01:54:38",
+      "dec": "+20:48:29",
+      "constellation": "白羊座",
+      "magnitude": 2.64,
+      "description": "白羊座β",
+      "altNames": [
+        "SHE"
+      ]
+    },
+    {
+      "id": "STAR_MARK",
+      "name": "室宿一",
+      "name_en": "Markab",
+      "type": "STAR",
+      "type_cn": "恒星",
+      "ra": "23:04:46",
+      "dec": "+15:12:19",
+      "constellation": "飞马座",
+      "magnitude": 2.49,
+      "description": "飞马座α",
+      "altNames": [
+        "MAR"
+      ]
+    },
+    {
+      "id": "STAR_SCHE",
+      "name": "室宿二",
+      "name_en": "Scheat",
+      "type": "STAR",
+      "type_cn": "恒星",
+      "ra": "23:03:46",
+      "dec": "+28:04:58",
+      "constellation": "飞马座",
+      "magnitude": 2.44,
+      "description": "飞马座β，红巨星",
+      "altNames": [
+        "SCH"
+      ]
+    },
+    {
+      "id": "STAR_ALGN",
+      "name": "壁宿一",
+      "name_en": "Algenib",
+      "type": "STAR",
+      "type_cn": "恒星",
+      "ra": "00:13:14",
+      "dec": "+15:11:01",
+      "constellation": "飞马座",
+      "magnitude": 2.83,
+      "description": "飞马座γ",
+      "altNames": [
+        "ALG"
+      ]
+    },
+    {
+      "id": "STAR_ENIF",
+      "name": "危宿三",
+      "name_en": "Enif",
+      "type": "STAR",
+      "type_cn": "恒星",
+      "ra": "21:44:11",
+      "dec": "+09:52:30",
+      "constellation": "飞马座",
+      "magnitude": 2.39,
+      "description": "飞马座ε，橙色巨星",
+      "altNames": [
+        "ENI"
+      ]
+    },
+    {
+      "id": "STAR_SADM",
+      "name": "天困一",
+      "name_en": "Sadalmelik",
+      "type": "STAR",
+      "type_cn": "恒星",
+      "ra": "22:05:47",
+      "dec": "-00:19:11",
+      "constellation": "宝瓶座",
+      "magnitude": 2.95,
+      "description": "宝瓶座α",
+      "altNames": [
+        "SAD"
+      ]
+    },
+    {
+      "id": "STAR_SADA",
+      "name": "天困二",
+      "name_en": "Sadalsuud",
+      "type": "STAR",
+      "type_cn": "恒星",
+      "ra": "21:31:34",
+      "dec": "-05:34:16",
+      "constellation": "宝瓶座",
+      "magnitude": 2.9,
+      "description": "宝瓶座β",
+      "altNames": [
+        "SAD"
       ]
     },
     {
@@ -65,93 +740,18 @@
       ]
     },
     {
-      "id": "STAR_CAN",
-      "name": "老人星",
-      "name_en": "Canopus",
+      "id": "STAR_BETEL",
+      "name": "参宿四",
+      "name_en": "Betelgeuse",
       "type": "STAR",
       "type_cn": "恒星",
-      "ra": "06:23:57",
-      "dec": "-52:41:45",
-      "constellation": "船底座",
-      "magnitude": -0.74,
-      "description": "夜空第二亮星，中国古代吉祥星",
+      "ra": "05:55:10",
+      "dec": "+07:24:25",
+      "constellation": "猎户座",
+      "magnitude": 0.5,
+      "description": "猎户座α，红超巨星",
       "altNames": [
-        "CAN"
-      ]
-    },
-    {
-      "id": "STAR_POL",
-      "name": "北极星",
-      "name_en": "Polaris",
-      "type": "STAR",
-      "type_cn": "恒星",
-      "ra": "02:31:49",
-      "dec": "+89:15:51",
-      "constellation": "小熊座",
-      "magnitude": 1.98,
-      "description": "指向正北，当前岁差北极星",
-      "altNames": [
-        "POL"
-      ]
-    },
-    {
-      "id": "STAR_ARC",
-      "name": "大角星",
-      "name_en": "Arcturus",
-      "type": "STAR",
-      "type_cn": "恒星",
-      "ra": "14:16:02",
-      "dec": "+19:10:27",
-      "constellation": "牧夫座",
-      "magnitude": -0.05,
-      "description": "夜空第四亮星，橙巨星",
-      "altNames": [
-        "ARC"
-      ]
-    },
-    {
-      "id": "STAR_SPI",
-      "name": "角宿一",
-      "name_en": "Spica",
-      "type": "STAR",
-      "type_cn": "恒星",
-      "ra": "13:25:11",
-      "dec": "-11:09:41",
-      "constellation": "室女座",
-      "magnitude": 0.97,
-      "description": "室女座最亮星，密近双星",
-      "altNames": [
-        "SPI"
-      ]
-    },
-    {
-      "id": "STAR_ANT",
-      "name": "心宿二",
-      "name_en": "Antares",
-      "type": "STAR",
-      "type_cn": "恒星",
-      "ra": "16:29:25",
-      "dec": "-26:25:55",
-      "constellation": "天蝎座",
-      "magnitude": 0.96,
-      "description": "天蝎座主星，红超巨星，又名大火",
-      "altNames": [
-        "ANT"
-      ]
-    },
-    {
-      "id": "STAR_PRO",
-      "name": "南河三",
-      "name_en": "Procyon",
-      "type": "STAR",
-      "type_cn": "恒星",
-      "ra": "07:39:18",
-      "dec": "+05:13:30",
-      "constellation": "小犬座",
-      "magnitude": 0.34,
-      "description": "冬季大三角之一，双星系统",
-      "altNames": [
-        "PRO"
+        "BET"
       ]
     },
     {
@@ -164,24 +764,9 @@
       "dec": "-08:12:06",
       "constellation": "猎户座",
       "magnitude": 0.13,
-      "description": "猎户座最亮星，蓝白超巨星",
+      "description": "猎户座β，蓝超巨星",
       "altNames": [
         "RIG"
-      ]
-    },
-    {
-      "id": "STAR_ALD",
-      "name": "毕宿五",
-      "name_en": "Aldebaran",
-      "type": "STAR",
-      "type_cn": "恒星",
-      "ra": "04:35:55",
-      "dec": "+16:30:33",
-      "constellation": "金牛座",
-      "magnitude": 0.85,
-      "description": "金牛座主星，橙巨星",
-      "altNames": [
-        "ALD"
       ]
     },
     {
@@ -194,54 +779,39 @@
       "dec": "+45:59:53",
       "constellation": "御夫座",
       "magnitude": 0.08,
-      "description": "北半球第三亮星，四合星系统",
+      "description": "御夫座最亮星",
       "altNames": [
         "CAP"
       ]
     },
     {
-      "id": "STAR_REG",
-      "name": "轩辕十四",
-      "name_en": "Regulus",
+      "id": "STAR_ALD",
+      "name": "毕宿五",
+      "name_en": "Aldebaran",
       "type": "STAR",
       "type_cn": "恒星",
-      "ra": "10:08:22",
-      "dec": "+11:58:02",
-      "constellation": "狮子座",
-      "magnitude": 1.35,
-      "description": "狮子座主星，黄矮星，位置靠近黄道",
+      "ra": "04:35:55",
+      "dec": "+16:30:33",
+      "constellation": "金牛座",
+      "magnitude": 0.86,
+      "description": "金牛座最亮星",
       "altNames": [
-        "REG"
+        "ALD"
       ]
     },
     {
-      "id": "STAR_FOM",
-      "name": "北落师门",
-      "name_en": "Fomalhaut",
+      "id": "STAR_PRO",
+      "name": "南河三",
+      "name_en": "Procyon",
       "type": "STAR",
       "type_cn": "恒星",
-      "ra": "22:57:39",
-      "dec": "-29:37:20",
-      "constellation": "南鱼座",
-      "magnitude": 1.16,
-      "description": "南天亮星之一，周围有岩屑盘",
+      "ra": "07:39:18",
+      "dec": "+05:13:30",
+      "constellation": "小犬座",
+      "magnitude": 0.4,
+      "description": "小犬座最亮星",
       "altNames": [
-        "FOM"
-      ]
-    },
-    {
-      "id": "STAR_CAS",
-      "name": "北河二",
-      "name_en": "Castor",
-      "type": "STAR",
-      "type_cn": "恒星",
-      "ra": "07:34:36",
-      "dec": "+31:53:18",
-      "constellation": "双子座",
-      "magnitude": 1.58,
-      "description": "双子座第二亮星，六合星系统",
-      "altNames": [
-        "CAS"
+        "PRO"
       ]
     },
     {
@@ -254,39 +824,69 @@
       "dec": "+28:01:34",
       "constellation": "双子座",
       "magnitude": 1.14,
-      "description": "双子座最亮星，距离最近的红巨星之一",
+      "description": "双子座最亮星",
       "altNames": [
-        "POLL"
+        "POL"
       ]
     },
     {
-      "id": "STAR_BETEL",
-      "name": "参宿四",
-      "name_en": "Betelgeuse",
+      "id": "STAR_CAS",
+      "name": "北河二",
+      "name_en": "Castor",
       "type": "STAR",
       "type_cn": "恒星",
-      "ra": "05:55:10",
-      "dec": "+07:24:25",
+      "ra": "07:34:36",
+      "dec": "+31:53:18",
+      "constellation": "双子座",
+      "magnitude": 1.58,
+      "description": "双子座α，六合星",
+      "altNames": [
+        "CAS"
+      ]
+    },
+    {
+      "id": "STAR_ALHEN",
+      "name": "井宿三",
+      "name_en": "Alhena",
+      "type": "STAR",
+      "type_cn": "恒星",
+      "ra": "06:37:43",
+      "dec": "+17:34:16",
+      "constellation": "双子座",
+      "magnitude": 1.69,
+      "description": "双子座γ",
+      "altNames": [
+        "ALH"
+      ]
+    },
+    {
+      "id": "STAR_BELL",
+      "name": "参宿五",
+      "name_en": "Bellatrix",
+      "type": "STAR",
+      "type_cn": "恒星",
+      "ra": "05:25:08",
+      "dec": "+06:20:59",
       "constellation": "猎户座",
-      "magnitude": 0.5,
-      "description": "猎户座第二亮星，红超巨星，体积巨大",
+      "magnitude": 1.64,
+      "description": "猎户座γ，猎户左肩",
       "altNames": [
-        "BETEL"
+        "BEL"
       ]
     },
     {
-      "id": "STAR_ELN",
-      "name": "五车五",
-      "name_en": "Elnath",
+      "id": "STAR_ALNI",
+      "name": "参宿二",
+      "name_en": "Alnilam",
       "type": "STAR",
       "type_cn": "恒星",
-      "ra": "05:26:17",
-      "dec": "+28:37:33",
-      "constellation": "金牛座",
-      "magnitude": 1.65,
-      "description": "金牛座第二亮星，也是御夫座β星",
+      "ra": "05:36:13",
+      "dec": "-01:12:07",
+      "constellation": "猎户座",
+      "magnitude": 1.69,
+      "description": "猎户座ε，猎户腰带中",
       "altNames": [
-        "ELN"
+        "ALN"
       ]
     },
     {
@@ -299,144 +899,114 @@
       "dec": "-57:14:12",
       "constellation": "波江座",
       "magnitude": 0.46,
-      "description": "波江座最亮星，蓝色快速旋转恒星",
+      "description": "波江座最亮星",
       "altNames": [
         "ACH"
       ]
     },
     {
-      "id": "STAR_ALN",
-      "name": "厕一",
+      "id": "STAR_HAD",
+      "name": "马腹一",
+      "name_en": "Hadar",
+      "type": "STAR",
+      "type_cn": "恒星",
+      "ra": "14:03:49",
+      "dec": "-60:22:23",
+      "constellation": "半人马座",
+      "magnitude": 0.61,
+      "description": "半人马座β",
+      "altNames": [
+        "HAD"
+      ]
+    },
+    {
+      "id": "STAR_ACRU",
+      "name": "十字架二",
+      "name_en": "Acrux",
+      "type": "STAR",
+      "type_cn": "恒星",
+      "ra": "12:26:36",
+      "dec": "-63:05:57",
+      "constellation": "南十字座",
+      "magnitude": 0.77,
+      "description": "南十字座最亮星",
+      "altNames": [
+        "ACR"
+      ]
+    },
+    {
+      "id": "STAR_MIMO",
+      "name": "十字架三",
+      "name_en": "Mimosa",
+      "type": "STAR",
+      "type_cn": "恒星",
+      "ra": "12:47:43",
+      "dec": "-59:41:19",
+      "constellation": "南十字座",
+      "magnitude": 1.59,
+      "description": "南十字座β",
+      "altNames": [
+        "MIM"
+      ]
+    },
+    {
+      "id": "STAR_CAN",
+      "name": "老人星",
+      "name_en": "Canopus",
+      "type": "STAR",
+      "type_cn": "恒星",
+      "ra": "06:23:57",
+      "dec": "-52:41:44",
+      "constellation": "船底座",
+      "magnitude": -0.72,
+      "description": "夜空第二亮星",
+      "altNames": [
+        "CAN"
+      ]
+    },
+    {
+      "id": "STAR_ALNR",
+      "name": "天鹤一",
       "name_en": "Alnair",
       "type": "STAR",
       "type_cn": "恒星",
-      "ra": "21:23:53",
-      "dec": "-40:36:49",
+      "ra": "22:08:14",
+      "dec": "-46:57:40",
       "constellation": "天鹤座",
-      "magnitude": 1.74,
-      "description": "天鹤座最亮星，南天亮星",
+      "magnitude": 1.73,
+      "description": "天鹤座最亮星",
       "altNames": [
         "ALN"
       ]
     },
     {
-      "id": "STAR_DUB",
-      "name": "少卫增八",
-      "name_en": "Dubhe",
+      "id": "STAR_BGRU",
+      "name": "火鸟六",
+      "name_en": "Beta Gruis",
       "type": "STAR",
       "type_cn": "恒星",
-      "ra": "11:03:44",
-      "dec": "+61:45:03",
-      "constellation": "大熊座",
-      "magnitude": 1.79,
-      "description": "大熊座α星，北斗六，指极星之一",
+      "ra": "22:42:40",
+      "dec": "-46:53:08",
+      "constellation": "天鹤座",
+      "magnitude": 2.07,
+      "description": "天鹤座第二亮星",
       "altNames": [
-        "DUB"
+        "BET"
       ]
     },
     {
-      "id": "STAR_MER",
-      "name": "天枢",
-      "name_en": "Merak",
+      "id": "STAR_APAV",
+      "name": "孔雀十一",
+      "name_en": "Alpha Pavonis",
       "type": "STAR",
       "type_cn": "恒星",
-      "ra": "11:01:51",
-      "dec": "+56:22:57",
-      "constellation": "大熊座",
-      "magnitude": 2.37,
-      "description": "大熊座β星，北斗七，指向北极星",
+      "ra": "20:25:39",
+      "dec": "-56:44:06",
+      "constellation": "孔雀座",
+      "magnitude": 1.94,
+      "description": "孔雀座最亮星",
       "altNames": [
-        "MER"
-      ]
-    },
-    {
-      "id": "STAR_ALIOTH",
-      "name": "玉衡",
-      "name_en": "Alioth",
-      "type": "STAR",
-      "type_cn": "恒星",
-      "ra": "12:54:02",
-      "dec": "+55:57:35",
-      "constellation": "大熊座",
-      "magnitude": 1.77,
-      "description": "大熊座ε星，北斗五，密近双星",
-      "altNames": [
-        "ALIOTH"
-      ]
-    },
-    {
-      "id": "STAR_MIZAR",
-      "name": "开阳",
-      "name_en": "Mizar",
-      "type": "STAR",
-      "type_cn": "恒星",
-      "ra": "13:23:56",
-      "dec": "+54:55:31",
-      "constellation": "大熊座",
-      "magnitude": 2.04,
-      "description": "大熊座ζ星，北斗六，著名双星",
-      "altNames": [
-        "MIZAR"
-      ]
-    },
-    {
-      "id": "STAR_BEN",
-      "name": "摇光",
-      "name_en": "Alkaid",
-      "type": "STAR",
-      "type_cn": "恒星",
-      "ra": "13:47:32",
-      "dec": "+49:18:48",
-      "constellation": "大熊座",
-      "magnitude": 1.86,
-      "description": "大熊座η星，北斗七，蓝白巨星",
-      "altNames": [
-        "BEN"
-      ]
-    },
-    {
-      "id": "STAR_THUB",
-      "name": "辇道一",
-      "name_en": "Albireo",
-      "type": "STAR",
-      "type_cn": "恒星",
-      "ra": "19:30:42",
-      "dec": "+27:57:35",
-      "constellation": "天鹅座",
-      "magnitude": 3.18,
-      "description": "天鹅座β星，著名色彩双星（蓝+橙）",
-      "altNames": [
-        "THUB"
-      ]
-    },
-    {
-      "id": "STAR_ENIF",
-      "name": "危宿三",
-      "name_en": "Enif",
-      "type": "STAR",
-      "type_cn": "恒星",
-      "ra": "21:44:11",
-      "dec": "+09:52:30",
-      "constellation": "飞马座",
-      "magnitude": 2.39,
-      "description": "飞马座ε星，橙巨星",
-      "altNames": [
-        "ENIF"
-      ]
-    },
-    {
-      "id": "STAR_MARK",
-      "name": "室宿一",
-      "name_en": "Markab",
-      "type": "STAR",
-      "type_cn": "恒星",
-      "ra": "23:04:45",
-      "dec": "+15:12:19",
-      "constellation": "飞马座",
-      "magnitude": 2.49,
-      "description": "飞马座α星，秋季四边形之一",
-      "altNames": [
-        "MARK"
+        "ALP"
       ]
     }
   ]

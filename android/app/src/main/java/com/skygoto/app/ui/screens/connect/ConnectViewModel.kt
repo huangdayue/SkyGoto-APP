@@ -9,6 +9,7 @@ import com.skygoto.app.data.datasource.ScannedBluetoothDevice
 import com.skygoto.app.data.protocol.LX200Protocol
 import com.skygoto.app.data.protocol.ProtocolConnection
 import com.skygoto.app.data.repository.MountRepositoryImpl
+import com.skygoto.app.domain.model.ConnectionState
 import com.skygoto.app.domain.repository.ConnectionManager
 import com.skygoto.app.util.AppLogger
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -19,8 +20,8 @@ import javax.inject.Inject
 private const val TAG = "ConnectViewModel"
 
 data class ConnectUiState(
-    val host: String = "192.168.1.1",
-    val port: String = "9999",
+    val host: String = "192.168.0.1",
+    val port: String = "9998",
     val isConnecting: Boolean = false,
     val error: String? = null,
     val pairedDevices: List<Pair<String, String>> = emptyList(), // name, address
@@ -152,9 +153,9 @@ class ConnectViewModel @Inject constructor(
             
             result.fold(
                 onSuccess = { connection ->
-                    // 验证连接：发送 :GVP# 获取版本信息
+                    // 验证连接：发送 :GVM# 获取版本信息
                     val protocol = LX200Protocol(connection)
-                    val versionResult = protocol.sendCommand(":GVP#")
+                    val versionResult = protocol.sendCommand(":GVM#")
                     
                     versionResult.fold(
                         onSuccess = { version ->
@@ -176,7 +177,7 @@ class ConnectViewModel @Inject constructor(
                             _uiState.update { 
                                 it.copy(isConnecting = false, error = "连接验证失败: ${e.message}") 
                             }
-                            AppLogger.e(TAG, "GVP command failed", e)
+                            AppLogger.e(TAG, "GVM command failed", e)
                         }
                     )
                 },
@@ -199,25 +200,29 @@ class ConnectViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.update { it.copy(isConnecting = true, error = null) }
             
-            val result = connectionManager.connectWiFi(host, port.toIntOrNull() ?: 9999)
+            val result = connectionManager.connectWiFi(host, port.toIntOrNull() ?: 9998)
             
             result.fold(
                 onSuccess = { connection ->
                     AppLogger.i("UserAction", "WiFi连接成功: $host:$port")
-                    mountRepository.setConnection(connection)
-                    // 获取固件版本
-                    val protocol = LX200Protocol(connection)
-                    val versionResult = protocol.sendCommand(":GVN#")
-                    protocol.close()
-                    val versionStr = versionResult.getOrNull()?.trim() ?: "未知"
-                    _uiState.update { 
-                        it.copy(
-                            isConnecting = false, 
-                            deviceName = "$host:$port",
-                            firmwareVersion = versionStr,
-                            isWifiConnection = true,
-                            showConnectedToast = true
-                        ) 
+                    try {
+                        // connectionManager.connectWiFi 已验证过连接，版本号已存入 state
+                        val versionStr = (connectionManager.connectionState.value as? ConnectionState.Connected)?.extraInfo ?: ""
+                        mountRepository.setConnection(connection)
+                        _uiState.update {
+                            it.copy(
+                                isConnecting = false,
+                                deviceName = "$host:$port",
+                                firmwareVersion = versionStr,
+                                isWifiConnection = true,
+                                showConnectedToast = true
+                            )
+                        }
+                    } catch (e: Exception) {
+                        AppLogger.e(TAG, "WiFi连接成功但后续处理异常: ${e.message}", e)
+                        _uiState.update {
+                            it.copy(isConnecting = false, error = "连接后处理异常: ${e.message}")
+                        }
                     }
                 },
                 onFailure = { e ->
@@ -250,14 +255,14 @@ class ConnectViewModel @Inject constructor(
             
             result.fold(
                 onSuccess = { connection ->
-                    AppLogger.d(TAG, "Bluetooth connection established, verifying with :GVP#")
-                    // 验证连接：发送 :GVP# 获取版本信息
+                    AppLogger.d(TAG, "Bluetooth connection established, verifying with :GVM#")
+                    // 验证连接：发送 :GVM# 获取版本信息
                     val protocol = LX200Protocol(connection)
-                    val versionResult = protocol.sendCommand(":GVP#")
+                    val versionResult = protocol.sendCommand(":GVM#")
                     
                     versionResult.fold(
                         onSuccess = { version ->
-                            AppLogger.d(TAG, "GVP response: $version")
+                            AppLogger.d(TAG, "GVM response: $version")
                             mountRepository.setConnection(connection)
                             _isConnected.value = true
                             _uiState.update { 
@@ -271,7 +276,7 @@ class ConnectViewModel @Inject constructor(
                             }
                         },
                         onFailure = { e ->
-                            AppLogger.e(TAG, "GVP command failed", e)
+                            AppLogger.e(TAG, "GVM command failed", e)
                             connection.close()
                             _uiState.update { 
                                 it.copy(isConnecting = false, error = "连接验证失败: ${e.message}") 

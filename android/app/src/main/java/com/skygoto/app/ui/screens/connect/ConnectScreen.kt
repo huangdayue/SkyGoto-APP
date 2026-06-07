@@ -42,12 +42,9 @@ fun ConnectScreen(
     val connectionType by viewModel.connectionType.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     
-    // 显示连接成功提示
+    // 连接成功后自动清除 Toast 标记
     LaunchedEffect(uiState.showConnectedToast) {
         if (uiState.showConnectedToast) {
-            val version = uiState.firmwareVersion
-            val msg = if (version.isNotBlank()) "连接成功 | 固件: $version" else "连接成功"
-            snackbarHostState.showSnackbar(msg, duration = SnackbarDuration.Short)
             viewModel.clearConnectedToast()
         }
     }

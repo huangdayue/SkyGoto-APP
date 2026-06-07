@@ -92,3 +92,10 @@ val TextPrimary = Color(0xFFFFFFFF)
  * 降低对比度减少视觉疲劳。
  */
 val TextSecondary = Color(0xFFB0B8C4)
+
+/**
+ * 三级文字颜色 - 暗淡灰
+ *
+ * 用于返回值说明、提示信息等次要辅助文字。
+ */
+val TextTertiary = Color(0xFF808890)

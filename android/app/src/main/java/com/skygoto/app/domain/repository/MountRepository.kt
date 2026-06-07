@@ -212,6 +212,16 @@ interface MountRepository {
     suspend fun home(): Result<Unit>
 
     /**
+     * 回零并等待完成
+     *
+     * 1. 发送 :hC# 启动回零
+     * 2. 轮询 :D# 直到赤道仪停止运动（超时 60 秒）
+     *
+     * @return Result<Unit>
+     */
+    suspend fun homeAndWait(): Result<Unit>
+
+    /**
      * 设零位（Set Zero Position）
      *
      * 将当前位置设置为零位参考点。
@@ -227,6 +237,80 @@ interface MountRepository {
      */
     suspend fun setZeroPosition(): Result<Unit>
 
+    // ========== 对齐模式 ==========
+    
+    /**
+     * 启动对齐模式
+     *
+     * 发送 :A[n]# 进入 OnStepX 的对齐模式，n 为对齐星数。
+     * 对齐模式下 polling 将暂停，由对齐流程自行管理状态。
+     *
+     * @param starCount 对齐星数（1~9）
+     * @return Result<Unit> 操作结果
+     */
+    suspend fun startAlign(starCount: Int = 6): Result<Unit>
+    
+    /**
+     * 结束对齐模式并保存模型
+     *
+     * 1. 发送 :A-# 退出对齐模式
+     * 2. 发送 :AW# 将对齐模型写入 NV 存储
+     *
+     * @return Result<Unit> 操作结果
+     */
+    suspend fun finishAlign(): Result<Unit>
+    
+    /**
+     * 接受当前居中的校准星
+     *
+     * 发送 :A+# 将当前居中的星加入对齐模型。
+     * 在用户手动居中目标星后调用。
+     *
+     * @return Result<Unit>
+     */
+    suspend fun acceptAlignStar(): Result<Unit>
+    
+    /**
+     * 取消对齐模式
+     *
+     * 发送 :A-# 退出对齐模式，不保存模型。
+     * 恢复 polling。
+     *
+     * @return Result<Unit> 操作结果
+     */
+    suspend fun cancelAlign(): Result<Unit>
+    
+    /**
+     * 清除对齐模型
+     *
+     * 发送 :A[n]#（清空 RAM）后 :AW#（写入 NV 覆盖旧数据）。
+     *
+     * @param starCount 星数
+     * @return Result<Unit>
+     */
+    suspend fun clearAlignModel(starCount: Int = 6): Result<Unit>
+    
+    /**
+     * 获取对齐状态
+     *
+     * 发送 :A?# 查询当前对齐进度。
+     * 返回三元组 (maxStars, currentStar, lastStar)
+     *
+     * @return Result<Triple<Int,Int,Int>> (计划星数, 当前第几星, 已录星数)
+     */
+    suspend fun getAlignStatus(): Result<Triple<Int, Int, Int>>
+    
+    /**
+     * 设置对齐目标星
+     *
+     * 发送 :Sr + :Sd 设置目标星的 RA/Dec。
+     *
+     * @param ra 赤经 HH:MM:SS
+     * @param dec 赤纬 sDD*MM:SS
+     * @return Result<Unit>
+     */
+    suspend fun setAlignTarget(ra: String, dec: String): Result<Unit>
+    
     // ========== 位置设置 ==========
 
     /**
@@ -308,6 +392,132 @@ interface MountRepository {
      * @return Result<Unit> 操作结果
      */
     suspend fun setTimezone(timezone: String): Result<Unit>
+    
+    // ========== PEC - 周期性误差补偿 ==========
+    
+    /**
+     * 获取 PEC 状态
+     *
+     * 发送 :\$QZ?# 查询当前 PEC 状态。
+     * 返回状态字符：I=空闲, p=待回放, P=回放中, r=待录制, R=录制中
+     * 可选择附带小数点后缀表示已检测到索信号
+     *
+     * @return Result<PecInfo> PEC 完整状态信息
+     */
+    suspend fun getPecState(): Result<PecInfo>
+    
+    /**
+     * 启用 PEC 回放
+     *
+     * 发送 :\$QZ+# 启动 PEC 补偿。
+     * 仅在已录制有效 PEC 数据时生效。
+     *
+     * @return Result<Unit>
+     */
+    suspend fun pecPlay(): Result<Unit>
+    
+    /**
+     * 禁用 PEC
+     *
+     * 发送 :\$QZ-# 停止 PEC 回放或录制。
+     *
+     * @return Result<Unit>
+     */
+    suspend fun pecStop(): Result<Unit>
+    
+    /**
+     * 开始录制 PEC 数据
+     *
+     * 发送 :\$QZ/# 进入待录制状态，
+     * 蜗杆到达整秒位置后自动开始录制。
+     * 录制持续一个完整的蜗杆旋转周期。
+     *
+     * @return Result<Unit>
+     */
+    suspend fun pecRecord(): Result<Unit>
+    
+    /**
+     * 清空 PEC 数据缓存
+     *
+     * 发送 :\$QZZ# 清除内存中的 PEC 修正数据。
+     *
+     * @return Result<Unit>
+     */
+    suspend fun pecClear(): Result<Unit>
+    
+    /**
+     * 保存 PEC 数据到 NV
+     *
+     * 发送 :\$QZ!# 将当前内存中的 PEC 数据写入非易失存储，
+     * 断电不丢失。
+     *
+     * @return Result<Unit>
+     */
+    suspend fun pecSave(): Result<Unit>
+    
+    /**
+     * 获取 PEC 配置参数
+     *
+     * 发送 :GXE7# 获取蜗杆每转步数
+     * 发送 :GXE8# 获取缓存大小（秒数）
+     *
+     * @return Result<Pair<Long, Int>> (wormRotationSteps, bufferSizeSeconds)
+     */
+    suspend fun getPecConfig(): Result<Pair<Long, Int>>
+    
+    /**
+     * 设置蜗杆每转步数
+     *
+     * 发送 :SXE7,[n]# 设置蜗杆旋转一周的微步数。
+     * 此参数需与硬件实际配置一致。
+     *
+     * @param steps 蜗杆每转微步数（0 到 129600000）
+     * @return Result<Unit>
+     */
+    suspend fun setPecWormSteps(steps: Long): Result<Unit>
+    
+    /**
+     * 读取某秒的修正值
+     *
+     * 发送 :VR[n]# 读取 PEC 表中第 n 秒的修正值。
+     *
+     * @param index 索引（秒），0 到 bufferSize-1
+     * @return Result<Int> 修正值（步），范围 -127 到 +127
+     */
+    suspend fun readPecEntry(index: Int): Result<Int>
+    
+    /**
+     * 写入某秒的修正值
+     *
+     * 发送 :WR[n,sn]# 设置 PEC 表中第 n 秒的修正值。
+     *
+     * @param index 索引（秒），0 到 bufferSize-1
+     * @param value 修正值（步），范围 -127 到 +127
+     * @return Result<Unit>
+     */
+    suspend fun writePecEntry(index: Int, value: Int): Result<Unit>
+    
+    /**
+     * 批量读取全部 PEC 修正值
+     *
+     * 遍历发送 :VR[n]# 读取整条 PEC 曲线。
+     * 此操作会暂停状态轮询，完成后恢复。
+     *
+     * @param bufferSize 缓存大小（秒数）
+     * @return Result<List<Int>> 修正值列表，索引对应秒
+     */
+    suspend fun loadPecCurve(bufferSize: Int): Result<List<Int>>
+    
+    /**
+     * 批量写入全部 PEC 修正值
+     *
+     * 遍历发送 :WR[n,sn]# 写入整条 PEC 曲线。
+     * 此操作会暂停状态轮询，完成后恢复。
+     *
+     * @param values 修正值列表
+     * @return Result<Unit>
+     */
+    suspend fun savePecCurve(values: List<Int>): Result<Unit>
     
     // ========== 状态轮询控制 ==========
     

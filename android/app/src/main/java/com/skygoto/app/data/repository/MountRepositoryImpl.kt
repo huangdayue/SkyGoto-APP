@@ -34,6 +34,10 @@ class MountRepositoryImpl @Inject constructor(
     // 命令互斥锁：防止 polling 和 GOTO 命令同时发送导致响应交织
     private val commandMutex = Mutex()
     
+    // 连续获取状态失败的次数（WiFi断开检测）
+    private var consecutiveFailures = 0
+    private val maxConsecutiveFailures = 3
+    
     private val TAG = "MountRepository"
     
     /**
@@ -47,6 +51,7 @@ class MountRepositoryImpl @Inject constructor(
         // 创建新协议实例
         protocol = LX200Protocol(connection)
         _isConnected.value = true
+        consecutiveFailures = 0  // 新连接，重置失败计数
         // ❌ 不在这里启动 Polling，由 ControlScreen 的 lifecycle 控制
     }
     
@@ -102,6 +107,8 @@ class MountRepositoryImpl @Inject constructor(
             }
             
             return@withLock try {
+                consecutiveFailures = 0  // 重置连续失败计数
+                
                 val ra = p.sendCommand(Cmd.GET_RA).getOrNull()?.trim() ?: "--:--:--"
                 val dec = p.sendCommand(Cmd.GET_DEC).getOrNull()?.trim() ?: "--:--:--"
                 val alt = p.sendCommand(Cmd.GET_ALT).getOrNull()?.trim() ?: "--:--"
@@ -122,6 +129,13 @@ class MountRepositoryImpl @Inject constructor(
                 _mountStatus.value = status
                 Result.success(status)
             } catch (e: Exception) {
+                consecutiveFailures++
+                AppLogger.e(TAG, "getStatus 异常: ${e.message}")
+                if (consecutiveFailures >= maxConsecutiveFailures) {
+                    _isConnected.value = false
+                    pollingJob?.cancel()
+                    connectionManager.notifyDisconnected()
+                }
                 Result.failure(e)
             }
         }
@@ -132,7 +146,7 @@ class MountRepositoryImpl @Inject constructor(
             val p = protocol ?: return@withLock Result.failure(Exception("Not connected"))
             // :Te 返回单个字符 '1'（成功）或 '0'（失败），不带 #
             val response = p.sendAndReadSingleDigit(Cmd.TRACKING_ON)
-            AppLogger.w(TAG, "startTracking response: '$response'")
+            AppLogger.i(TAG, "startTracking response: '$response'")
             return@withLock if (response == "1") {
                 Result.success(Unit)
             } else {
@@ -147,7 +161,7 @@ class MountRepositoryImpl @Inject constructor(
             val p = protocol ?: return@withLock Result.failure(Exception("Not connected"))
             // :Td 返回单个字符 '1'（成功）或 '0'（失败），不带 #
             val response = p.sendAndReadSingleDigit(Cmd.TRACKING_OFF)
-            AppLogger.w(TAG, "stopTracking response: '$response'")
+            AppLogger.i(TAG, "stopTracking response: '$response'")
             return@withLock if (response == "1") {
                 Result.success(Unit)
             } else {
@@ -188,7 +202,7 @@ class MountRepositoryImpl @Inject constructor(
             }
             // 速率命令无响应，立即返回
             p.sendCommandNoResponse(rateCmd)
-            AppLogger.w(TAG, "setMoveRate: $rateCmd")
+            AppLogger.i(TAG, "setMoveRate: $rateCmd")
             return@withLock Result.success(Unit)
         }
     }
@@ -203,33 +217,33 @@ class MountRepositoryImpl @Inject constructor(
     }
     
     override suspend fun setTargetAndGoto(ra: String, dec: String): Result<GotoResult> {
-        AppLogger.w(TAG, "setTargetAndGoto: RA=$ra, Dec=$dec")
+        AppLogger.i(TAG, "setTargetAndGoto: RA=$ra, Dec=$dec")
         
         return commandMutex.withLock {
             val p = protocol ?: return@withLock Result.failure(Exception("Not connected"))
             
             try {
                 // 设置目标赤经 :Sr 返回单个字符 '1'（成功）或 '0'（失败），不带 #
-                AppLogger.w(TAG, "Sending SET_TARGET_RA: :Sr$ra#")
+                AppLogger.i(TAG, "Sending SET_TARGET_RA: :Sr$ra#")
                 val raResponse = p.sendAndReadSingleDigit("${Cmd.SET_TARGET_RA}$ra")
-                AppLogger.w(TAG, "SET_TARGET_RA response: '$raResponse'")
+                AppLogger.i(TAG, "SET_TARGET_RA response: '$raResponse'")
                 
                 // 设置目标赤纬 :Sd 返回单个字符 '1'（成功）或 '0'（失败），不带 #
-                AppLogger.w(TAG, "Sending SET_TARGET_DEC: :Sd$dec#")
+                AppLogger.i(TAG, "Sending SET_TARGET_DEC: :Sd$dec#")
                 val decResponse = p.sendAndReadSingleDigit("${Cmd.SET_TARGET_DEC}$dec")
-                AppLogger.w(TAG, "SET_TARGET_DEC response: '$decResponse'")
+                AppLogger.i(TAG, "SET_TARGET_DEC response: '$decResponse'")
                 
                 // 执行 GOTO（:MS 返回单个字符响应码，suppressFrame=true 不发送 #）
-                AppLogger.w(TAG, "Sending GOTO_TARGET: ${Cmd.GOTO_TARGET}#")
+                AppLogger.i(TAG, "Sending GOTO_TARGET: ${Cmd.GOTO_TARGET}#")
                 val response = p.sendAndReadSingleDigit(Cmd.GOTO_TARGET)
-                AppLogger.w(TAG, "GOTO_TARGET response: '$response'")
+                AppLogger.i(TAG, "GOTO_TARGET response: '$response'")
                 
                 if (response.isEmpty()) {
                     return@withLock Result.failure(Exception("GOTO 命令超时"))
                 }
                 
                 val firstDigit = response.firstNotNullOfOrNull { it.digitToIntOrNull() } ?: -1
-                AppLogger.w(TAG, "GOTO response code: $firstDigit (full response: '$response')")
+                AppLogger.i(TAG, "GOTO response code: $firstDigit (full response: '$response')")
                 
                 if (firstDigit == 0) {
                     _mountStatus.value = _mountStatus.value.copy(
@@ -253,7 +267,7 @@ class MountRepositoryImpl @Inject constructor(
             val p = protocol ?: return@withLock Result.failure(Exception("Not connected"))
             // :Q# 无响应，立即返回
             p.sendCommandNoResponse(Cmd.STOP_ALL)
-            AppLogger.w(TAG, "cancelGoto STOP_ALL sent")
+            AppLogger.i(TAG, "cancelGoto STOP_ALL sent")
             return@withLock Result.success(Unit)
         }
     }
@@ -263,7 +277,7 @@ class MountRepositoryImpl @Inject constructor(
             val p = protocol ?: return@withLock Result.failure(Exception("Not connected"))
             // :CM# 返回 "N/A#" 成功 或 "E0#" 等失败，带 # 结束符
             val response = p.sendCommand(Cmd.SYNC_TO_CATALOG).getOrNull()?.trim() ?: ""
-            AppLogger.w(TAG, "syncToCurrentPosition response: '$response'")
+            AppLogger.i(TAG, "syncToCurrentPosition response: '$response'")
             return@withLock if (response.startsWith("N/A")) {
                 Result.success(Unit)
             } else {
@@ -277,9 +291,38 @@ class MountRepositoryImpl @Inject constructor(
             val p = protocol ?: return@withLock Result.failure(Exception("Not connected"))
             // :hC# 无响应，立即返回
             p.sendCommandNoResponse(Cmd.HOME_GOTO)
-            AppLogger.w(TAG, "home HOME_GOTO sent")
+            AppLogger.i(TAG, "home HOME_GOTO sent")
             return@withLock Result.success(Unit)
         }
+    }
+
+    override suspend fun homeAndWait(): Result<Unit> {
+        val p = protocol ?: return Result.failure(Exception("Not connected"))
+
+        // 1. 发送回零命令
+        p.sendCommandNoResponse(Cmd.HOME_GOTO)
+        AppLogger.i(TAG, "homeAndWait: HOME_GOTO sent")
+
+        // 2. 轮询 :D# 直到赤道仪停止（超时 120 秒）
+        val timeoutMs = 120_000L
+        val pollIntervalMs = 500L
+        val startMs = System.currentTimeMillis()
+
+        while (System.currentTimeMillis() - startMs < timeoutMs) {
+            val motionResp = p.sendAndReadSingleDigit(Cmd.GET_MOTION_STATUS)
+            // :D# 返回：移动中 = 0x7f (char 127)，停止 = '#' (char 35)
+            val stopped = motionResp == "#" || motionResp == ""
+            if (stopped) {
+                AppLogger.i(TAG, "homeAndWait: 回零完成")
+                return Result.success(Unit)
+            }
+            kotlinx.coroutines.delay(pollIntervalMs)
+        }
+
+        AppLogger.w(TAG, "homeAndWait: 回零超时")  // 超时是警告，保留 WARN
+        // 超时后发 :Q# 停止运动
+        p.sendCommandNoResponse(Cmd.STOP_ALL)
+        return Result.failure(Exception("回零超时（120秒）"))
     }
     
     override suspend fun setZeroPosition(): Result<Unit> {
@@ -287,7 +330,7 @@ class MountRepositoryImpl @Inject constructor(
             val p = protocol ?: return@withLock Result.failure(Exception("Not connected"))
             // :hF# 无响应，立即返回
             p.sendCommandNoResponse(Cmd.HOME_RESET)
-            AppLogger.w(TAG, "setZeroPosition HOME_RESET sent")
+            AppLogger.i(TAG, "setZeroPosition HOME_RESET sent")
             return@withLock Result.success(Unit)
         }
     }
@@ -306,7 +349,7 @@ class MountRepositoryImpl @Inject constructor(
             // 发送位置到赤道仪（:St 和 :Sg 返回 '1' 成功，'0' 失败）
             val latResponse = p.sendAndReadSingleDigit("${Cmd.SET_LATITUDE}$latOnStep")
             val lonResponse = p.sendAndReadSingleDigit("${Cmd.SET_LONGITUDE}$lonOnStep")
-            AppLogger.w(TAG, "SET_LATITUDE response: '$latResponse', SET_LONGITUDE response: '$lonResponse'")
+            AppLogger.i(TAG, "SET_LATITUDE response: '$latResponse', SET_LONGITUDE response: '$lonResponse'")
             
             return@withLock if (latResponse == "1" && lonResponse == "1") {
                 Result.success(Unit)
@@ -320,11 +363,16 @@ class MountRepositoryImpl @Inject constructor(
         return commandMutex.withLock {
             val p = protocol ?: return@withLock Result.failure(Exception("Not connected"))
             try {
+                AppLogger.i(TAG, "getLocation: 开始请求 :Gt#")
                 val latResponse = p.sendCommand(Cmd.GET_LATITUDE).getOrNull()?.trim() ?: ""
+                AppLogger.i(TAG, "getLocation: lat响应='$latResponse' (长度=${latResponse.length})")
+                AppLogger.i(TAG, "getLocation: 开始请求 :Gg#")
                 val lonResponse = p.sendCommand(Cmd.GET_LONGITUDE).getOrNull()?.trim() ?: ""
-                AppLogger.w(TAG, "getLocation: lat='$latResponse', lon='$lonResponse'")
+                AppLogger.i(TAG, "getLocation: lon响应='$lonResponse' (长度=${lonResponse.length})")
+                AppLogger.i(TAG, "getLocation: lat='$latResponse', lon='$lonResponse'")
                 Result.success(Pair(latResponse, lonResponse))
             } catch (e: Exception) {
+                AppLogger.e(TAG, "getLocation异常: ${e.message}", e)
                 Result.failure(e)
             }
         }
@@ -336,7 +384,7 @@ class MountRepositoryImpl @Inject constructor(
             try {
                 // :GL# 返回 24 小时制本地时间 HH:MM:SS
                 val response = p.sendCommand(Cmd.GET_LOCAL_TIME_24H).getOrNull()?.trim() ?: ""
-                AppLogger.w(TAG, "getLocalTime: '$response'")
+                AppLogger.i(TAG, "getLocalTime: '$response'")
                 if (response.isNotEmpty() && response.length >= 5) {
                     Result.success(response)
                 } else {
@@ -354,7 +402,7 @@ class MountRepositoryImpl @Inject constructor(
             try {
                 // :GC# 返回 MM/DD/YY 格式
                 val response = p.sendCommand(Cmd.GET_DATE).getOrNull()?.trim() ?: ""
-                AppLogger.w(TAG, "getDate: '$response'")
+                AppLogger.i(TAG, "getDate: '$response'")
                 // 转换为 YYYY-MM-DD 格式
                 val parts = response.split("/")
                 if (parts.size == 3) {
@@ -377,7 +425,7 @@ class MountRepositoryImpl @Inject constructor(
             try {
                 // :GG# 返回 sHH:MM 格式的 UTC 偏移
                 val response = p.sendCommand(Cmd.GET_TIMEZONE_OFFSET).getOrNull()?.trim() ?: ""
-                AppLogger.w(TAG, "getTimezone: '$response'")
+                AppLogger.i(TAG, "getTimezone: '$response'")
                 Result.success(response)
             } catch (e: Exception) {
                 Result.failure(e)
@@ -388,10 +436,10 @@ class MountRepositoryImpl @Inject constructor(
     override suspend fun setTime(time: String): Result<Unit> {
         return commandMutex.withLock {
             val p = protocol ?: return@withLock Result.failure(Exception("Not connected"))
-            AppLogger.w(TAG, "setTime: sending :SL$time#")
+            AppLogger.i(TAG, "setTime: sending :SL$time#")
             // :SLHH:MM:SS# 返回 '1' 成功，'0' 失败
             val response = p.sendAndReadSingleDigit("${Cmd.SET_TIME}$time")
-            AppLogger.w(TAG, "setTime response: '$response'")
+            AppLogger.i(TAG, "setTime response: '$response'")
             return@withLock if (response == "1") {
                 Result.success(Unit)
             } else {
@@ -403,10 +451,10 @@ class MountRepositoryImpl @Inject constructor(
     override suspend fun setDate(date: String): Result<Unit> {
         return commandMutex.withLock {
             val p = protocol ?: return@withLock Result.failure(Exception("Not connected"))
-            AppLogger.w(TAG, "setDate: sending :SC$date#")
+            AppLogger.i(TAG, "setDate: sending :SC$date#")
             // :SCMM/DD/YY# 返回 '1' 成功，'0' 失败
             val response = p.sendAndReadSingleDigit("${Cmd.SET_DATE}$date")
-            AppLogger.w(TAG, "setDate response: '$response'")
+            AppLogger.i(TAG, "setDate response: '$response'")
             return@withLock if (response == "1") {
                 Result.success(Unit)
             } else {
@@ -418,10 +466,10 @@ class MountRepositoryImpl @Inject constructor(
     override suspend fun setTimezone(timezone: String): Result<Unit> {
         return commandMutex.withLock {
             val p = protocol ?: return@withLock Result.failure(Exception("Not connected"))
-            AppLogger.w(TAG, "setTimezone: sending :SG$timezone#")
+            AppLogger.i(TAG, "setTimezone: sending :SG$timezone#")
             // :SGsHH:MM# 返回 '1' 成功，'0' 失败
             val response = p.sendAndReadSingleDigit("${Cmd.SET_UTC_OFFSET}$timezone")
-            AppLogger.w(TAG, "setTimezone response: '$response'")
+            AppLogger.i(TAG, "setTimezone response: '$response'")
             return@withLock if (response == "1") {
                 Result.success(Unit)
             } else {
@@ -494,11 +542,11 @@ class MountRepositoryImpl @Inject constructor(
         }
         
         val result = "$sign$deg*$min:$sec"
-        AppLogger.w(TAG, "dmsToOnStepFormat('$dms') = '$result'")
+        AppLogger.i(TAG, "dmsToOnStepFormat('$dms') = '$result'")
         return result
     }
     
-    override fun startPolling() {
+        override fun startPolling() {
         pollingJob?.cancel()
         pollingJob = scope.launch {
             while (isActive) {
@@ -506,25 +554,283 @@ class MountRepositoryImpl @Inject constructor(
                 delay(1000) // 每秒更新
             }
         }
-        AppLogger.w(TAG, "Polling started")
+        AppLogger.i(TAG, "Polling started")
     }
     
     override fun stopPolling() {
         pollingJob?.cancel()
         pollingJob = null
-        AppLogger.w(TAG, "Polling stopped")
+        AppLogger.i(TAG, "Polling stopped")
     }
     
     override fun pausePolling() {
         pollingJob?.cancel()
         pollingJob = null
-        AppLogger.w(TAG, "Polling paused")
+        AppLogger.i(TAG, "Polling paused")
     }
     
     override fun resumePolling() {
         startPolling()
     }
     
+    // ========== 对齐模式 ==========
+
+    override suspend fun startAlign(starCount: Int): Result<Unit> {
+        val cmd = "${Cmd.ALIGN_START}$starCount"
+        return commandMutex.withLock {
+            val p = protocol ?: return@withLock Result.failure(Exception("Not connected"))
+            AppLogger.i(TAG, "startAlign: $cmd")
+            val response = p.sendAndReadSingleDigit(cmd)
+            AppLogger.i(TAG, "startAlign response: '$response'")
+            return@withLock if (response == "1") Result.success(Unit)
+            else Result.failure(Exception("启动${starCount}星对齐失败"))
+        }
+    }
+    
+    override suspend fun acceptAlignStar(): Result<Unit> {
+        return commandMutex.withLock {
+            val p = protocol ?: return@withLock Result.failure(Exception("Not connected"))
+            AppLogger.i(TAG, "acceptAlignStar: :A+#")
+            val response = p.sendAndReadSingleDigit(Cmd.ALIGN_ACCEPT)
+            AppLogger.i(TAG, "acceptAlignStar response: '$response'")
+            return@withLock if (response == "1") Result.success(Unit)
+            else Result.failure(Exception("接受校准星失败"))
+        }
+    }
+    override suspend fun finishAlign(): Result<Unit> {
+        return commandMutex.withLock {
+            val p = protocol ?: return@withLock Result.failure(Exception("Not connected"))
+            AppLogger.i(TAG, "finishAlign: :AW# (no :A-, not supported by OnStepX)")
+            val writeResp = p.sendAndReadSingleDigit(Cmd.ALIGN_WRITE)
+            AppLogger.i(TAG, "finishAlign ALIGN_WRITE response: '$writeResp'")
+            return@withLock if (writeResp == "1") Result.success(Unit)
+            else Result.failure(Exception("保存对齐模型失败"))
+        }
+    }
+
+    override suspend fun cancelAlign(): Result<Unit> {
+        return commandMutex.withLock {
+            val p = protocol ?: return@withLock Result.failure(Exception("Not connected"))
+            AppLogger.i(TAG, "cancelAlign: :A6# (start new align to reset state)")
+            // OnStepX 没有 :A-# 取消命令。发 :A6# 会触发 home.reset()→alignReset() 清空对齐状态。
+            // 同时也让赤道仪回零位，符合用户取消对齐的预期。
+            p.sendCommandNoResponse("${Cmd.ALIGN_START}6")
+            return@withLock Result.success(Unit)
+        }
+    }
+    
+    override suspend fun clearAlignModel(starCount: Int): Result<Unit> {
+        return commandMutex.withLock {
+            val p = protocol ?: return@withLock Result.failure(Exception("Not connected"))
+            AppLogger.i(TAG, "clearAlignModel: :A${starCount}# + :AW#")
+            // 开始对齐（自动清除 RAM 中的模型）
+            val startResp = p.sendAndReadSingleDigit("${Cmd.ALIGN_START}$starCount")
+            if (startResp != "1") {
+                return@withLock Result.failure(Exception("清除对齐模型失败"))
+            }
+            // 立即写入 NV（覆盖旧数据）
+            delay(100)
+            val writeResp = p.sendAndReadSingleDigit(Cmd.ALIGN_WRITE)
+            AppLogger.i(TAG, "clearAlignModel write response: '$writeResp'")
+            return@withLock Result.success(Unit)
+        }
+    }
+
+    override suspend fun getAlignStatus(): Result<Triple<Int, Int, Int>> {
+        return commandMutex.withLock {
+            val p = protocol ?: return@withLock Result.failure(Exception("Not connected"))
+            val raw = p.sendCommand(Cmd.ALIGN_GET_STATUS).getOrNull()?.trim() ?: ""
+            AppLogger.i(TAG, "getAlignStatus raw: '$raw'")
+            val parts = raw.split(",")
+            if (parts.size >= 3) {
+                val max = parts[0].toIntOrNull() ?: 0
+                val cur = parts[1].toIntOrNull() ?: 0
+                val last = parts[2].toIntOrNull() ?: 0
+                return@withLock Result.success(Triple(max, cur, last))
+            }
+            Result.failure(Exception("解析对齐状态失败: '$raw'"))
+        }
+    }
+
+    override suspend fun setAlignTarget(ra: String, dec: String): Result<Unit> {
+        return commandMutex.withLock {
+            val p = protocol ?: return@withLock Result.failure(Exception("Not connected"))
+            AppLogger.i(TAG, "setAlignTarget: RA=$ra, Dec=$dec")
+            val raResp = p.sendAndReadSingleDigit("${Cmd.SET_TARGET_RA}$ra")
+            if (raResp != "1") {
+                return@withLock Result.failure(Exception("设置对齐目标 RA 失败: '$raResp'"))
+            }
+            val decResp = p.sendAndReadSingleDigit("${Cmd.SET_TARGET_DEC}$dec")
+            if (decResp != "1") {
+                return@withLock Result.failure(Exception("设置对齐目标 Dec 失败: '$decResp'"))
+            }
+            return@withLock Result.success(Unit)
+        }
+    }
+
+    // ========== PEC - 周期性误差补偿 ==========
+    
+    override suspend fun getPecState(): Result<PecInfo> {
+        return commandMutex.withLock {
+            val p = protocol ?: return@withLock Result.failure(Exception("Not connected"))
+            try {
+                val raw = p.sendCommand(Cmd.PEC_STATUS).getOrNull()?.trim() ?: "?"
+                val stateCode = if (raw.isNotEmpty()) raw[0] else '?'
+                val hasIndex = raw.length > 1 && raw[1] == '.'
+                val state = PecState.fromCode(stateCode)
+                
+                // 尝试读取配置
+                val wormStepsStr = p.sendCommand(Cmd.PEC_GET_WORM_STEPS).getOrNull()?.trim() ?: "0"
+                val bufSizeStr = p.sendCommand(Cmd.PEC_GET_BUFFER_SIZE).getOrNull()?.trim() ?: "0"
+                val wormSteps = wormStepsStr.toLongOrNull() ?: 0L
+                val bufSize = bufSizeStr.toIntOrNull() ?: 0
+                
+                // 当前索位置
+                val indexStr = p.sendCommand(Cmd.PEC_GET_INDEX_POS).getOrNull()?.trim() ?: "0"
+                val indexPos = indexStr.toIntOrNull() ?: 0
+                
+                // 当前修正值 (:VR# 读当前播放位置的修正)
+                val curCorrStr = p.sendCommand("${Cmd.PEC_READ_ENTRY}#").getOrNull()?.trim() ?: "0"
+                val curCorrParts = curCorrStr.split(",")
+                val curCorr = curCorrParts.firstOrNull()?.toIntOrNull() ?: 0
+                
+                val progress = if (bufSize > 0 && state == PecState.RECORDING && indexPos > 0)
+                    (indexPos * 100 / bufSize).coerceIn(0, 100) else 0
+                
+                val info = PecInfo(
+                    state = state,
+                    hasIndexDetect = hasIndex,
+                    isRecorded = state >= PecState.READY_PLAY && state <= PecState.PLAYING,
+                    bufferSizeSeconds = bufSize,
+                    wormRotationSteps = wormSteps,
+                    currentIndexSecond = indexPos,
+                    currentCorrection = curCorr,
+                    progressPercent = progress
+                )
+                Result.success(info)
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+        }
+    }
+    
+    override suspend fun pecPlay(): Result<Unit> {
+        return sendPecSimple(Cmd.PEC_PLAY)
+    }
+    
+    override suspend fun pecStop(): Result<Unit> {
+        return sendPecSimple(Cmd.PEC_STOP)
+    }
+    
+    override suspend fun pecRecord(): Result<Unit> {
+        return sendPecSimple(Cmd.PEC_RECORD)
+    }
+    
+    override suspend fun pecClear(): Result<Unit> {
+        return sendPecSimple(Cmd.PEC_CLEAR)
+    }
+    
+    override suspend fun pecSave(): Result<Unit> {
+        return sendPecSimple(Cmd.PEC_SAVE)
+    }
+    
+    override suspend fun getPecConfig(): Result<Pair<Long, Int>> {
+        return commandMutex.withLock {
+            val p = protocol ?: return@withLock Result.failure(Exception("Not connected"))
+            try {
+                val w = p.sendCommand(Cmd.PEC_GET_WORM_STEPS).getOrNull()?.trim()?.toLongOrNull() ?: 0L
+                val b = p.sendCommand(Cmd.PEC_GET_BUFFER_SIZE).getOrNull()?.trim()?.toIntOrNull() ?: 0
+                Result.success(Pair(w, b))
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+        }
+    }
+    
+    override suspend fun setPecWormSteps(steps: Long): Result<Unit> {
+        return commandMutex.withLock {
+            val p = protocol ?: return@withLock Result.failure(Exception("Not connected"))
+            val resp = p.sendAndReadSingleDigit("${Cmd.PEC_SET_WORM_STEPS}$steps")
+            return@withLock if (resp == "1") Result.success(Unit)
+            else Result.failure(Exception("设置蜗杆步数失败"))
+        }
+    }
+    
+    override suspend fun readPecEntry(index: Int): Result<Int> {
+        return commandMutex.withLock {
+            val p = protocol ?: return@withLock Result.failure(Exception("Not connected"))
+            try {
+                val raw = p.sendCommand("${Cmd.PEC_READ_ENTRY}$index").getOrNull()?.trim() ?: "0"
+                val value = raw.toIntOrNull() ?: 0
+                Result.success(value)
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+        }
+    }
+    
+    override suspend fun writePecEntry(index: Int, value: Int): Result<Unit> {
+        return commandMutex.withLock {
+            val p = protocol ?: return@withLock Result.failure(Exception("Not connected"))
+            p.sendCommandNoResponse("${Cmd.PEC_WRITE_ENTRY}$index,$value")
+            return@withLock Result.success(Unit)
+        }
+    }
+    
+    override suspend fun loadPecCurve(bufferSize: Int): Result<List<Int>> {
+        val p = protocol ?: return Result.failure(Exception("Not connected"))
+        if (bufferSize <= 0 || bufferSize > 3600) {
+            return Result.failure(Exception("无效的缓存大小"))
+        }
+        pausePolling()
+        try {
+            val values = mutableListOf<Int>()
+            for (i in 0 until bufferSize) {
+                // 每条命令单独获取锁，避免长时间阻塞轮询导致 UI 冻结
+                val raw = commandMutex.withLock {
+                    p.sendCommand("${Cmd.PEC_READ_ENTRY}$i").getOrNull()?.trim() ?: "0"
+                }
+                values.add(raw.toIntOrNull() ?: 0)
+                if (i % 100 == 99) delay(100)  // 每百条让串口排空
+                else delay(10)                  // 微延迟防止溢出
+            }
+            return Result.success(values)
+        } catch (e: Exception) {
+            return Result.failure(e)
+        } finally {
+            resumePolling()
+        }
+    }
+    
+    override suspend fun savePecCurve(values: List<Int>): Result<Unit> {
+        val p = protocol ?: return Result.failure(Exception("Not connected"))
+        pausePolling()
+        try {
+            for ((i, v) in values.withIndex()) {
+                val clamped = v.coerceIn(-127, 127)
+                // 每条命令单独获取锁，避免长时间阻塞轮询
+                commandMutex.withLock {
+                    p.sendCommandNoResponse("${Cmd.PEC_WRITE_ENTRY}$i,$clamped")
+                }
+                if (i % 100 == 99) delay(100)
+                else delay(10)
+            }
+            return Result.success(Unit)
+        } catch (e: Exception) {
+            return Result.failure(e)
+        } finally {
+            resumePolling()
+        }
+    }
+    
+    private suspend fun sendPecSimple(command: String): Result<Unit> {
+        return commandMutex.withLock {
+            val p = protocol ?: return@withLock Result.failure(Exception("Not connected"))
+            p.sendCommandNoResponse(command)
+            return@withLock Result.success(Unit)
+        }
+    }
+
     // ========== 终端命令支持 ==========
     
     /**
